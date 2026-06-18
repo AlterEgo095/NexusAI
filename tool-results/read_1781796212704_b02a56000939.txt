@@ -1,0 +1,1130 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback, useRef, useEffect } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import ReactMarkdown from 'react-markdown'
+     6→import remarkGfm from 'remark-gfm'
+     7→import {
+     8→  FileText,
+     9→  Plus,
+    10→  ArrowLeft,
+    11→  Sparkles,
+    12→  Download,
+    13→  PenLine,
+    14→  BookOpen,
+    15→  Trash2,
+    16→  Eye,
+    17→  Code2,
+    18→  Type,
+    19→  Loader2,
+    20→} from 'lucide-react'
+    21→import { Button } from '@/components/ui/button'
+    22→import { Input } from '@/components/ui/input'
+    23→import { Textarea } from '@/components/ui/textarea'
+    24→import { Badge } from '@/components/ui/badge'
+    25→import { Label } from '@/components/ui/label'
+    26→import { Separator } from '@/components/ui/separator'
+    27→import {
+    28→  Dialog,
+    29→  DialogContent,
+    30→  DialogHeader,
+    31→  DialogTitle,
+    32→  DialogDescription,
+    33→  DialogFooter,
+    34→} from '@/components/ui/dialog'
+    35→import {
+    36→  Select,
+    37→  SelectContent,
+    38→  SelectItem,
+    39→  SelectTrigger,
+    40→  SelectValue,
+    41→} from '@/components/ui/select'
+    42→import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+    43→import { toast } from 'sonner'
+    44→
+    45→/* ─── Types ─── */
+    46→type DocumentType = 'markdown' | 'html' | 'text'
+    47→type DocumentStatus = 'brouillon' | 'finalisé'
+    48→
+    49→interface Document {
+    50→  id: string
+    51→  title: string
+    52→  content: string
+    53→  type: DocumentType
+    54→  status: DocumentStatus
+    55→  createdAt: Date
+    56→  updatedAt: Date
+    57→}
+    58→
+    59→/* ─── Templates ─── */
+    60→const TEMPLATES: {
+    61→  name: string
+    62→  icon: typeof FileText
+    63→  description: string
+    64→  type: DocumentType
+    65→  content: string
+    66→}[] = [
+    67→  {
+    68→    name: 'Rapport Professionnel',
+    69→    icon: FileText,
+    70→    description: 'Structure complète avec table des matières',
+    71→    type: 'markdown',
+    72→    content: `# Rapport Professionnel
+    73→
+    74→## Table des matières
+    75→1. Introduction
+    76→2. Contexte et objectifs
+    77→3. Méthodologie
+    78→4. Résultats
+    79→5. Analyse et discussion
+    80→6. Recommandations
+    81→7. Conclusion
+    82→
+    83→---
+    84→
+    85→## 1. Introduction
+    86→
+    87→Ce rapport présente les résultats de notre analyse concernant le projet en cours. Il a pour objectif de fournir une vue d'ensemble complète des avancées réalisées.
+    88→
+    89→## 2. Contexte et objectifs
+    90→
+    91→### 2.1 Contexte général
+    92→
+    93→Le projet a été initié dans le cadre de la stratégie de développement de l'entreprise.
+    94→
+    95→### 2.2 Objectifs
+    96→
+    97→- **Objectif principal** : Décrire les résultats obtenus
+    98→- **Objectif secondaire** : Proposer des pistes d'amélioration
+    99→- **Objectif tertiaire** : Planifier les prochaines étapes
+   100→
+   101→## 3. Méthodologie
+   102→
+   103→L'approche adoptée repose sur une analyse itérative combinant :
+   104→
+   105→1. Collecte de données quantitatives
+   106→2. Entretiens qualitatifs
+   107→3. Benchmarking sectoriel
+   108→
+   109→## 4. Résultats
+   110→
+   111→> Les résultats démontrent une progression significative sur l'ensemble des indicateurs clés.
+   112→
+   113→| Indicateur | Valeur initiale | Valeur actuelle | Variation |
+   114→|-----------|----------------|-----------------|-----------|
+   115→| Productivité | 65% | 82% | +17% |
+   116→| Satisfaction | 3.2/5 | 4.1/5 | +0.9 |
+   117→| Délai moyen | 12j | 8j | -33% |
+   118→
+   119→## 5. Analyse et discussion
+   120→
+   121→Les améliorations observées sont principalement attribuables à :
+   122→- L'optimisation des processus internes
+   123→- La formation des équipes
+   124→- L'intégration d'outils collaboratifs
+   125→
+   126→## 6. Recommandations
+   127→
+   128→1. Poursuivre la digitalisation des processus
+   129→2. Renforcer la formation continue
+   130→3. Étendre les bonnes pratiques à d'autres départements
+   131→
+   132→## 7. Conclusion
+   133→
+   134→Ce rapport met en évidence des résultats positifs et pose les bases d'une amélioration continue.
+   135→
+   136→---
+   137→*Document généré avec NexusAI Document Studio*`,
+   138→  },
+   139→  {
+   140→    name: 'Article de Blog',
+   141→    icon: PenLine,
+   142→    description: 'Format optimisé pour le SEO',
+   143→    type: 'markdown',
+   144→    content: `# Titre de l'Article : Guide Complet pour Réussir
+   145→
+   146→**Meta description** : Découvrez nos meilleures stratégies et conseils d'experts pour atteindre vos objectifs professionnels en 2024.
+   147→
+   148→---
+   149→
+   150→## Introduction
+   151→
+   152→Dans un monde en constante évolution, il est essentiel de rester à la pointe des dernières tendances et meilleures pratiques. Cet article vous guidera à travers les stratégies les plus efficaces.
+   153→
+   154→## Pourquoi c'est important en 2024 ?
+   155→
+   156→Le paysage professionnel a profondément changé. Voici les **3 raisons principales** :
+   157→
+   158→1. **Transformation digitale accélérée** — Les entreprises doivent s'adapter rapidement
+   159→2. **Nouvelles attentes des consommateurs** — L'expérience utilisateur est reine
+   160→3. **Concurrence accrue** — Se différencier est devenu crucial
+   161→
+   162→## Stratégie #1 : Fondamentaux Solides
+   163→
+   164→### Les piliers d'une approche réussie
+   165→
+   166→Avant de courir, il faut savoir marcher. Les fondamentaux incluent :
+   167→
+   168→- Définir des objectifs **SMART** (Spécifiques, Mesurables, Atteignables, Réalistes, Temporels)
+   169→- Comprendre votre audience cible
+   170→- Établir des indicateurs de performance clairs
+   171→
+   172→> 💡 **Conseil d'expert** : Prenez le temps de bien définir vos objectifs avant de vous lancer dans l'exécution.
+   173→
+   174→### Outils recommandés
+   175→
+   176→| Outil | Usage | Prix |
+   177→|-------|-------|------|
+   178→| Outil A | Analyse | Gratuit |
+   179→| Outil B | Gestion | Freemium |
+   180→| Outil C | Reporting | Premium |
+   181→
+   182→## Stratégie #2 : Optimisation Continue
+   183→
+   184→L'amélioration continue est un processus itératif. Voici comment l'appliquer :
+   185→
+   186→1. **Mesurer** — Collectez des données pertinentes
+   187→2. **Analyser** — Identifiez les opportunités d'amélioration
+   188→3. **Agir** — Mettez en place des changements ciblés
+   189→4. **Répéter** — Poursuivez le cycle
+   190→
+   191→## Erreurs Courantes à Éviter
+   192→
+   193→- ❌ Ignorer les données analytiques
+   194→- ❌ Vouloir tout changer en même temps
+   195→- ❌ Négliger l'aspect humain
+   196→- ✅ Prendre des décisions basées sur les données
+   197→- ✅ Procéder par étapes mesurables
+   198→- ✅ Impliquer les équipes dès le début
+   199→
+   200→## Conclusion
+   201→
+   202→En appliquant ces stratégies, vous serez en mesure d'atteindre vos objectifs plus efficacement. N'oubliez pas que la **constance** et l'**adaptabilité** sont les clés du succès à long terme.
+   203→
+   204→---
+   205→
+   206→*Tags : #Productivité #Stratégie #Croissance #2024*
+   207→
+   208→*Article rédigé avec NexusAI Document Studio*`,
+   209→  },
+   210→  {
+   211→    name: 'Documentation Technique',
+   212→    icon: BookOpen,
+   213→    description: 'Guide technique détaillé',
+   214→    type: 'markdown',
+   215→    content: `# Guide Technique — Documentation de Référence
+   216→
+   217→> **Version** : 1.0.0 | **Dernière mise à jour** : 2024
+   218→
+   219→---
+   220→
+   221→## Table des matières
+   222→
+   223→- [Prérequis](#prérequis)
+   224→- [Installation](#installation)
+   225→- [Configuration](#configuration)
+   226→- [Architecture](#architecture)
+   227→- [API Reference](#api-reference)
+   228→- [Exemples d'utilisation](#exemples-dutilisation)
+   229→- [Dépannage](#dépannage)
+   230→
+   231→## Prérequis
+   232→
+   233→Avant de commencer, assurez-vous d'avoir les éléments suivants installés :
+   234→
+   235→- **Node.js** >= 18.x
+   236→- **npm** ou **yarn** >= 1.22
+   237→- **Git** >= 2.30
+   238→
+   239→\`\`\`bash
+   240→# Vérifier les versions
+   241→node --version    # v18.x ou supérieur
+   242→npm --version     # 9.x ou supérieur
+   243→git --version     # 2.30 ou supérieur
+   244→\`\`\`
+   245→
+   246→## Installation
+   247→
+   248→### Étape 1 : Cloner le dépôt
+   249→
+   250→\`\`\`bash
+   251→git clone https://github.com/organisation/projet.git
+   252→cd projet
+   253→\`\`\`
+   254→
+   255→### Étape 2 : Installer les dépendances
+   256→
+   257→\`\`\`bash
+   258→npm install
+   259→\`\`\`
+   260→
+   261→### Étape 3 : Configurer l'environnement
+   262→
+   263→\`\`\`bash
+   264→cp .env.example .env.local
+   265→# Éditez .env.local avec vos valeurs
+   266→\`\`\`
+   267→
+   268→## Configuration
+   269→
+   270→Le fichier de configuration principal est \`config.json\` :
+   271→
+   272→\`\`\`json
+   273→{
+   274→  "port": 3000,
+   275→  "database": {
+   276→    "host": "localhost",
+   277→    "port": 5432,
+   278→    "name": "myapp"
+   279→  },
+   280→  "cache": {
+   281→    "enabled": true,
+   282→    "ttl": 3600
+   283→  }
+   284→}
+   285→\`\`\`
+   286→
+   287→### Variables d'environnement
+   288→
+   289→| Variable | Description | Requise | Défaut |
+   290→|----------|-------------|---------|--------|
+   291→| \`PORT\` | Port du serveur | Non | \`3000\` |
+   292→| \`DATABASE_URL\` | Chaîne de connexion DB | Oui | — |
+   293→| \`API_KEY\` | Clé d'API externe | Oui | — |
+   294→| \`LOG_LEVEL\` | Niveau de log | Non | \`info\` |
+   295→
+   296→## Architecture
+   297→
+   298→Le projet suit une architecture en couches :
+   299→
+   300→\`\`\`
+   301→src/
+   302→├── components/    # Composants réutilisables
+   303→├── hooks/         # Hooks React personnalisés
+   304→├── lib/           # Utilitaires et fonctions
+   305→├── services/      # Logique métier
+   306→├── types/         # Définitions TypeScript
+   307→└── app/           # Routes et pages
+   308→\`\`\`
+   309→
+   310→## API Reference
+   311→
+   312→### \`GET /api/items\`
+   313→
+   314→Récupérer la liste des éléments.
+   315→
+   316→**Paramètres de requête :**
+   317→
+   318→- \`page\` (number) — Numéro de page (défaut: 1)
+   319→- \`limit\` (number) — Éléments par page (défaut: 20)
+   320→
+   321→**Réponse :**
+   322→
+   323→\`\`\`json
+   324→{
+   325→  "success": true,
+   326→  "data": [...],
+   327→  "pagination": {
+   328→    "page": 1,
+   329→    "limit": 20,
+   330→    "total": 150
+   331→  }
+   332→}
+   333→\`\`\`
+   334→
+   335→## Exemples d'utilisation
+   336→
+   337→### Exemple basique
+   338→
+   339→\`\`\`typescript
+   340→import { fetchItems } from '@/services/api'
+   341→
+   342→async function loadData() {
+   343→  const result = await fetchItems({ page: 1, limit: 10 })
+   344→  console.log(result.data)
+   345→}
+   346→\`\`\`
+   347→
+   348→## Dépannage
+   349→
+   350→### Erreur courante : "Connection refused"
+   351→
+   352→- Vérifiez que le serveur de base de données est démarré
+   353→- Vérifiez \`DATABASE_URL\` dans \`.env.local\`
+   354→
+   355→### Erreur courante : "Module not found"
+   356→
+   357→\`\`\`bash
+   358→# Réinstaller les dépendances
+   359→rm -rf node_modules package-lock.json
+   360→npm install
+   361→\`\`\`
+   362→
+   363→---
+   364→
+   365→*Documentation générée avec NexusAI Document Studio*`,
+   366→  },
+   367→]
+   368→
+   369→/* ─── Relative time helper ─── */
+   370→function relativeTime(date: Date): string {
+   371→  const now = new Date()
+   372→  const diff = now.getTime() - date.getTime()
+   373→  const seconds = Math.floor(diff / 1000)
+   374→  const minutes = Math.floor(seconds / 60)
+   375→  const hours = Math.floor(minutes / 60)
+   376→  const days = Math.floor(hours / 24)
+   377→
+   378→  if (seconds < 60) return "À l'instant"
+   379→  if (minutes < 60) return `Il y a ${minutes} min`
+   380→  if (hours < 24) return `Il y a ${hours}h`
+   381→  if (days < 7) return `Il y a ${days}j`
+   382→  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+   383→}
+   384→
+   385→/* ─── Document type icon mapping ─── */
+   386→function getDocTypeIcon(type: DocumentType) {
+   387→  switch (type) {
+   388→    case 'markdown':
+   389→      return FileText
+   390→    case 'html':
+   391→      return Code2
+   392→    case 'text':
+   393→      return Type
+   394→  }
+   395→}
+   396→
+   397→function getDocTypeLabel(type: DocumentType): string {
+   398→  switch (type) {
+   399→    case 'markdown':
+   400→      return 'Markdown'
+   401→    case 'html':
+   402→      return 'HTML'
+   403→    case 'text':
+   404→      return 'Texte brut'
+   405→  }
+   406→}
+   407→
+   408→function getStatusVariant(status: DocumentStatus): 'default' | 'secondary' | 'outline' {
+   409→  return status === 'finalisé' ? 'default' : 'secondary'
+   410→}
+   411→
+   412→/* ─── Preview renderer ─── */
+   413→function DocumentPreview({ content, type }: { content: string; type: DocumentType }) {
+   414→  if (!content.trim()) {
+   415→    return (
+   416→      <div className="flex h-full items-center justify-center text-muted-foreground/50 text-sm">
+   417→        Aperçu du document
+   418→      </div>
+   419→    )
+   420→  }
+   421→
+   422→  switch (type) {
+   423→    case 'markdown':
+   424→      return (
+   425→        <div className="prose-ai custom-scrollbar h-full overflow-y-auto p-6">
+   426→          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+   427→        </div>
+   428→      )
+   429→    case 'html':
+   430→      return (
+   431→        <div
+   432→          className="custom-scrollbar h-full w-full overflow-y-auto p-6"
+   433→          style={{ all: 'initial', display: 'block', fontFamily: 'inherit', color: 'inherit' }}
+   434→        >
+   435→          <div
+   436→            className="prose-ai"
+   437→            style={{ all: 'revert' }}
+   438→            dangerouslySetInnerHTML={{ __html: content }}
+   439→          />
+   440→        </div>
+   441→      )
+   442→    case 'text':
+   443→      return (
+   444→        <pre className="custom-scrollbar h-full overflow-y-auto whitespace-pre-wrap break-words p-6 text-sm leading-7">
+   445→          {content}
+   446→        </pre>
+   447→      )
+   448→  }
+   449→}
+   450→
+   451→/* ─── Animation variants ─── */
+   452→const containerVariants = {
+   453→  hidden: { opacity: 0 },
+   454→  visible: {
+   455→    opacity: 1,
+   456→    transition: { staggerChildren: 0.06 },
+   457→  },
+   458→}
+   459→
+   460→const cardVariants = {
+   461→  hidden: { opacity: 0, y: 20, scale: 0.95 },
+   462→  visible: {
+   463→    opacity: 1,
+   464→    y: 0,
+   465→    scale: 1,
+   466→    transition: { duration: 0.35, ease: [0.4, 0, 0.2, 1] as const },
+   467→  },
+   468→  exit: {
+   469→    opacity: 0,
+   470→    y: -10,
+   471→    scale: 0.95,
+   472→    transition: { duration: 0.2 },
+   473→  },
+   474→}
+   475→
+   476→/* ─── AI Generation Dialog ─── */
+   477→function AIGenerationDialog({
+   478→  open,
+   479→  onOpenChange,
+   480→  onGenerate,
+   481→  isGenerating,
+   482→  initialType,
+   483→}: {
+   484→  open: boolean
+   485→  onOpenChange: (open: boolean) => void
+   486→  onGenerate: (prompt: string, type: DocumentType, tone: string, length: string) => void
+   487→  isGenerating: boolean
+   488→  initialType: DocumentType
+   489→}) {
+   490→  const [prompt, setPrompt] = useState('')
+   491→  const [docType, setDocType] = useState<DocumentType>(initialType)
+   492→  const [tone, setTone] = useState('professionnel')
+   493→  const [length, setLength] = useState('moyen')
+   494→
+   495→  const handleGenerate = () => {
+   496→    if (!prompt.trim()) return
+   497→    onGenerate(prompt, docType, tone, length)
+   498→    setPrompt('')
+   499→  }
+   500→
+   501→  return (
+   502→    <Dialog open={open} onOpenChange={onOpenChange}>
+   503→      <DialogContent className="glass-strong sm:max-w-lg">
+   504→        <DialogHeader>
+   505→          <DialogTitle className="flex items-center gap-2">
+   506→            <Sparkles className="size-5 text-primary" />
+   507→            Générer avec l'IA
+   508→          </DialogTitle>
+   509→          <DialogDescription>
+   510→            Décrivez le document que vous souhaitez générer et configurez les options.
+   511→          </DialogDescription>
+   512→        </DialogHeader>
+   513→
+   514→        <div className="space-y-4 py-2">
+   515→          <div className="space-y-2">
+   516→            <Label htmlFor="ai-prompt">Description du document</Label>
+   517→            <Textarea
+   518→              id="ai-prompt"
+   519→              placeholder="Décrivez le document que vous souhaitez générer..."
+   520→              value={prompt}
+   521→              onChange={(e) => setPrompt(e.target.value)}
+   522→              className="min-h-[100px] resize-none"
+   523→            />
+   524→          </div>
+   525→
+   526→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+   527→            <div className="space-y-2">
+   528→              <Label>Type</Label>
+   529→              <Select value={docType} onValueChange={(v) => setDocType(v as DocumentType)}>
+   530→                <SelectTrigger>
+   531→                  <SelectValue />
+   532→                </SelectTrigger>
+   533→                <SelectContent>
+   534→                  <SelectItem value="markdown">Markdown</SelectItem>
+   535→                  <SelectItem value="html">HTML</SelectItem>
+   536→                  <SelectItem value="text">Texte brut</SelectItem>
+   537→                </SelectContent>
+   538→              </Select>
+   539→            </div>
+   540→
+   541→            <div className="space-y-2">
+   542→              <Label>Ton</Label>
+   543→              <Select value={tone} onValueChange={setTone}>
+   544→                <SelectTrigger>
+   545→                  <SelectValue />
+   546→                </SelectTrigger>
+   547→                <SelectContent>
+   548→                  <SelectItem value="professionnel">Professionnel</SelectItem>
+   549→                  <SelectItem value="académique">Académique</SelectItem>
+   550→                  <SelectItem value="créatif">Créatif</SelectItem>
+   551→                  <SelectItem value="technique">Technique</SelectItem>
+   552→                </SelectContent>
+   553→              </Select>
+   554→            </div>
+   555→
+   556→            <div className="space-y-2">
+   557→              <Label>Longueur</Label>
+   558→              <Select value={length} onValueChange={setLength}>
+   559→                <SelectTrigger>
+   560→                  <SelectValue />
+   561→                </SelectTrigger>
+   562→                <SelectContent>
+   563→                  <SelectItem value="court">Court</SelectItem>
+   564→                  <SelectItem value="moyen">Moyen</SelectItem>
+   565→                  <SelectItem value="long">Long</SelectItem>
+   566→                </SelectContent>
+   567→              </Select>
+   568→            </div>
+   569→          </div>
+   570→        </div>
+   571→
+   572→        <DialogFooter>
+   573→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isGenerating}>
+   574→            Annuler
+   575→          </Button>
+   576→          <Button onClick={handleGenerate} disabled={!prompt.trim() || isGenerating}>
+   577→            {isGenerating ? (
+   578→              <>
+   579→                <Loader2 className="mr-2 size-4 animate-spin" />
+   580→                Génération...
+   581→              </>
+   582→            ) : (
+   583→              <>
+   584→                <Sparkles className="mr-2 size-4" />
+   585→                Générer
+   586→              </>
+   587→            )}
+   588→          </Button>
+   589→        </DialogFooter>
+   590→      </DialogContent>
+   591→    </Dialog>
+   592→  )
+   593→}
+   594→
+   595→/* ─── Main Component ─── */
+   596→export default function DocumentsModule() {
+   597→  /* Document state */
+   598→  const [documents, setDocuments] = useState<Document[]>([])
+   599→  const [activeDocId, setActiveDocId] = useState<string | null>(null)
+   600→  const [editorContent, setEditorContent] = useState('')
+   601→  const [editorTitle, setEditorTitle] = useState('')
+   602→  const [editorType, setEditorType] = useState<DocumentType>('markdown')
+   603→  const [editorStatus, setEditorStatus] = useState<DocumentStatus>('brouillon')
+   604→
+   605→  /* Editor UI state */
+   606→  const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'split'>('split')
+   607→  const [aiDialogOpen, setAiDialogOpen] = useState(false)
+   608→  const [isGenerating, setIsGenerating] = useState(false)
+   609→
+   610→  /* Refs */
+   611→  const textareaRef = useRef<HTMLTextAreaElement>(null)
+   612→
+   613→  /* Auto-resize textarea */
+   614→  useEffect(() => {
+   615→    const el = textareaRef.current
+   616→    if (el) {
+   617→      el.style.height = 'auto'
+   618→      el.style.height = `${Math.max(el.scrollHeight, el.parentElement?.clientHeight ?? 400)}px`
+   619→    }
+   620→  }, [editorContent, activeDocId])
+   621→
+   622→  /* Get active document */
+   623→  const activeDoc = documents.find((d) => d.id === activeDocId) ?? null
+   624→
+   625→  /* ─── Document CRUD ─── */
+   626→  const createDocument = useCallback(
+   627→    (title: string, type: DocumentType, content: string) => {
+   628→      const now = new Date()
+   629→      const doc: Document = {
+   630→        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+   631→        title,
+   632→        content,
+   633→        type,
+   634→        status: 'brouillon',
+   635→        createdAt: now,
+   636→        updatedAt: now,
+   637→      }
+   638→      setDocuments((prev) => [doc, ...prev])
+   639→      setActiveDocId(doc.id)
+   640→      setEditorTitle(doc.title)
+   641→      setEditorContent(doc.content)
+   642→      setEditorType(doc.type)
+   643→      setEditorStatus(doc.status)
+   644→      return doc.id
+   645→    },
+   646→    []
+   647→  )
+   648→
+   649→  const openDocument = useCallback(
+   650→    (id: string) => {
+   651→      const doc = documents.find((d) => d.id === id)
+   652→      if (!doc) return
+   653→      setActiveDocId(id)
+   654→      setEditorTitle(doc.title)
+   655→      setEditorContent(doc.content)
+   656→      setEditorType(doc.type)
+   657→      setEditorStatus(doc.status)
+   658→    },
+   659→    [documents]
+   660→  )
+   661→
+   662→  const saveCurrentDocument = useCallback(() => {
+   663→    if (!activeDocId) return
+   664→    setDocuments((prev) =>
+   665→      prev.map((d) =>
+   666→        d.id === activeDocId
+   667→          ? { ...d, title: editorTitle, content: editorContent, type: editorType, status: editorStatus, updatedAt: new Date() }
+   668→          : d
+   669→      )
+   670→    )
+   671→  }, [activeDocId, editorTitle, editorContent, editorType, editorStatus])
+   672→
+   673→  const deleteDocument = useCallback(
+   674→    (id: string) => {
+   675→      setDocuments((prev) => prev.filter((d) => d.id !== id))
+   676→      if (activeDocId === id) {
+   677→        setActiveDocId(null)
+   678→        setEditorTitle('')
+   679→        setEditorContent('')
+   680→      }
+   681→      toast.success('Document supprimé')
+   682→    },
+   683→    [activeDocId]
+   684→  )
+   685→
+   686→  /* Auto-save on changes */
+   687→  useEffect(() => {
+   688→    if (activeDocId) {
+   689→      const timer = setTimeout(saveCurrentDocument, 800)
+   690→      return () => clearTimeout(timer)
+   691→    }
+   692→  }, [editorTitle, editorContent, editorType, editorStatus, activeDocId, saveCurrentDocument])
+   693→
+   694→  /* ─── AI Generation ─── */
+   695→  const handleAIGenerate = useCallback(
+   696→    async (prompt: string, type: DocumentType, tone: string, length: string) => {
+   697→      setIsGenerating(true)
+   698→
+   699→      const lengthMap: Record<string, string> = {
+   700→        court: 'environ 200-300 mots',
+   701→        moyen: 'environ 500-800 mots',
+   702→        long: 'environ 1000-1500 mots',
+   703→      }
+   704→
+   705→      const typeInstruction: Record<DocumentType, string> = {
+   706→        markdown: 'Utilise le format Markdown avec titres, listes, tableaux si pertinent.',
+   707→        html: 'Utilise du HTML sémantique avec des balises appropriées (h1, h2, p, ul, etc.).',
+   708→        text: 'Rédige en texte brut bien structuré.',
+   709→      }
+   710→
+   711→      const systemPrompt = `Tu es un expert en rédaction professionnelle. Tu génères des documents de haute qualité.
+   712→Ton : ${tone}.
+   713→Longueur souhaitée : ${lengthMap[length]}.
+   714→${typeInstruction[type]}
+   715→
+   716→Génère UNIQUEMENT le contenu du document, sans commentaires ou explications supplémentaires.
+   717→Commence directement par le contenu.`
+   718→
+   719→      try {
+   720→        const response = await fetch('/api/chat', {
+   721→          method: 'POST',
+   722→          headers: { 'Content-Type': 'application/json' },
+   723→          body: JSON.stringify({
+   724→            messages: [{ role: 'user', content: prompt }],
+   725→            systemPrompt,
+   726→          }),
+   727→        })
+   728→
+   729→        const data = await response.json()
+   730→
+   731→        if (data.success && data.content) {
+   732→          setEditorContent((prev) => {
+   733→            const separator = prev.trim() ? '\n\n---\n\n' : ''
+   734→            return prev + separator + data.content
+   735→          })
+   736→          toast.success('Document généré avec succès')
+   737→          setAiDialogOpen(false)
+   738→        } else {
+   739→          toast.error(data.error || 'Erreur lors de la génération')
+   740→        }
+   741→      } catch {
+   742→        toast.error('Erreur de connexion au serveur')
+   743→      } finally {
+   744→        setIsGenerating(false)
+   745→      }
+   746→    },
+   747→    []
+   748→  )
+   749→
+   750→  /* ─── Download ─── */
+   751→  const handleDownload = useCallback(() => {
+   752→    if (!editorContent.trim()) {
+   753→      toast.error('Le document est vide')
+   754→      return
+   755→    }
+   756→
+   757→    const extensions: Record<DocumentType, string> = {
+   758→      markdown: 'md',
+   759→      html: 'html',
+   760→      text: 'txt',
+   761→    }
+   762→
+   763→    const mimeTypes: Record<DocumentType, string> = {
+   764→      markdown: 'text/markdown',
+   765→      html: 'text/html',
+   766→      text: 'text/plain',
+   767→    }
+   768→
+   769→    const ext = extensions[editorType]
+   770→    const mime = mimeTypes[editorType]
+   771→    const filename = `${editorTitle || 'document'}.${ext}`
+   772→
+   773→    let fileContent = editorContent
+   774→    if (editorType === 'html' && !editorContent.trim().startsWith('<!DOCTYPE') && !editorContent.trim().startsWith('<html')) {
+   775→      fileContent = `<!DOCTYPE html>\n<html lang="fr">\n<head>\n  <meta charset="UTF-8">\n  <title>${editorTitle}</title>\n</head>\n<body>\n${editorContent}\n</body>\n</html>`
+   776→    }
+   777→
+   778→    const blob = new Blob([fileContent], { type: mime })
+   779→    const url = URL.createObjectURL(blob)
+   780→    const a = document.createElement('a')
+   781→    a.href = url
+   782→    a.download = filename
+   783→    document.body.appendChild(a)
+   784→    a.click()
+   785→    document.body.removeChild(a)
+   786→    URL.revokeObjectURL(url)
+   787→    toast.success(`Téléchargé : ${filename}`)
+   788→  }, [editorContent, editorType, editorTitle])
+   789→
+   790→  /* ─── Back to list ─── */
+   791→  const handleBack = useCallback(() => {
+   792→    saveCurrentDocument()
+   793→    setActiveDocId(null)
+   794→  }, [saveCurrentDocument])
+   795→
+   796→  /* ─── Render: Editor View ─── */
+   797→  if (activeDocId) {
+   798→    return (
+   799→      <>
+   800→        <div className="flex h-full flex-col">
+   801→          {/* Editor header */}
+   802→          <motion.div
+   803→            initial={{ opacity: 0, y: -10 }}
+   804→            animate={{ opacity: 1, y: 0 }}
+   805→            transition={{ duration: 0.3 }}
+   806→          >
+   807→            {/* Back button + title row */}
+   808→            <div className="flex items-center gap-3 border-b border-border/50 px-4 py-3">
+   809→              <Button
+   810→                variant="ghost"
+   811→                size="icon"
+   812→                className="size-8 shrink-0"
+   813→                onClick={handleBack}
+   814→                aria-label="Retour à la liste"
+   815→              >
+   816→                <ArrowLeft className="size-4" />
+   817→              </Button>
+   818→
+   819→              <Input
+   820→                value={editorTitle}
+   821→                onChange={(e) => setEditorTitle(e.target.value)}
+   822→                className="h-8 max-w-xs border-0 bg-transparent text-base font-semibold focus-visible:ring-0 focus-visible:ring-offset-0"
+   823→                placeholder="Titre du document..."
+   824→              />
+   825→
+   826→              <div className="ml-auto flex items-center gap-2">
+   827→                <Select
+   828→                  value={editorType}
+   829→                  onValueChange={(v) => setEditorType(v as DocumentType)}
+   830→                >
+   831→                  <SelectTrigger className="h-8 w-[140px]">
+   832→                    <SelectValue />
+   833→                  </SelectTrigger>
+   834→                  <SelectContent>
+   835→                    <SelectItem value="markdown">Markdown</SelectItem>
+   836→                    <SelectItem value="html">HTML</SelectItem>
+   837→                    <SelectItem value="text">Texte brut</SelectItem>
+   838→                  </SelectContent>
+   839→                </Select>
+   840→
+   841→                <Select
+   842→                  value={editorStatus}
+   843→                  onValueChange={(v) => setEditorStatus(v as DocumentStatus)}
+   844→                >
+   845→                  <SelectTrigger className="h-8 w-[130px]">
+   846→                    <SelectValue />
+   847→                  </SelectTrigger>
+   848→                  <SelectContent>
+   849→                    <SelectItem value="brouillon">Brouillon</SelectItem>
+   850→                    <SelectItem value="finalisé">Finalisé</SelectItem>
+   851→                  </SelectContent>
+   852→                </Select>
+   853→
+   854→                <Separator orientation="vertical" className="mx-1 h-6" />
+   855→
+   856→                <Button
+   857→                  variant="outline"
+   858→                  size="sm"
+   859→                  className="h-8 gap-1.5"
+   860→                  onClick={() => setAiDialogOpen(true)}
+   861→                >
+   862→                  <Sparkles className="size-3.5" />
+   863→                  <span className="hidden sm:inline">Générer avec l'IA</span>
+   864→                </Button>
+   865→
+   866→                <Button
+   867→                  variant="outline"
+   868→                  size="sm"
+   869→                  className="h-8 gap-1.5"
+   870→                  onClick={handleDownload}
+   871→                >
+   872→                  <Download className="size-3.5" />
+   873→                  <span className="hidden sm:inline">Télécharger</span>
+   874→                </Button>
+   875→              </div>
+   876→            </div>
+   877→
+   878→            {/* Editor / Preview tabs (mobile) or split indicator (desktop) */}
+   879→            <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2 md:hidden">
+   880→              <Tabs value={editorTab} onValueChange={(v) => setEditorTab(v as typeof editorTab)}>
+   881→                <TabsList className="h-8">
+   882→                  <TabsTrigger value="editor" className="text-xs px-3">
+   883→                    Éditeur
+   884→                  </TabsTrigger>
+   885→                  <TabsTrigger value="split" className="text-xs px-3">
+   886→                    Split
+   887→                  </TabsTrigger>
+   888→                  <TabsTrigger value="preview" className="text-xs px-3">
+   889→                    Aperçu
+   890→                  </TabsTrigger>
+   891→                </TabsList>
+   892→              </Tabs>
+   893→            </div>
+   894→          </motion.div>
+   895→
+   896→          {/* Editor + Preview area */}
+   897→          <div className="flex flex-1 overflow-hidden">
+   898→            {/* Editor panel */}
+   899→            {(editorTab === 'editor' || editorTab === 'split') && (
+   900→              <motion.div
+   901→                className={editorTab === 'split' ? 'w-[60%] border-r border-border/50' : 'w-full'}
+   902→                initial={{ opacity: 0 }}
+   903→                animate={{ opacity: 1 }}
+   904→                transition={{ duration: 0.3, delay: 0.1 }}
+   905→              >
+   906→                <div className="flex h-full flex-col">
+   907→                  <div className="flex items-center gap-2 border-b border-border/30 px-4 py-1.5">
+   908→                    <span className="text-xs text-muted-foreground font-medium">
+   909→                      {getDocTypeLabel(editorType)}
+   910→                    </span>
+   911→                    <span className="text-xs text-muted-foreground/50">
+   912→                      {editorContent.length} caractères
+   913→                    </span>
+   914→                  </div>
+   915→                  <div className="relative flex-1">
+   916→                    <textarea
+   917→                      ref={textareaRef}
+   918→                      value={editorContent}
+   919→                      onChange={(e) => setEditorContent(e.target.value)}
+   920→                      className="custom-scrollbar input-glow h-full w-full resize-none bg-transparent p-4 font-mono text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground/40"
+   921→                      placeholder="Commencez à écrire votre document..."
+   922→                      spellCheck={false}
+   923→                    />
+   924→                  </div>
+   925→                </div>
+   926→              </motion.div>
+   927→            )}
+   928→
+   929→            {/* Preview panel */}
+   930→            {(editorTab === 'preview' || editorTab === 'split') && (
+   931→              <motion.div
+   932→                className={editorTab === 'split' ? 'w-[40%]' : 'w-full'}
+   933→                initial={{ opacity: 0 }}
+   934→                animate={{ opacity: 1 }}
+   935→                transition={{ duration: 0.3, delay: 0.2 }}
+   936→              >
+   937→                <div className="flex h-full flex-col">
+   938→                  <div className="flex items-center gap-2 border-b border-border/30 px-4 py-1.5">
+   939→                    <Eye className="size-3.5 text-muted-foreground" />
+   940→                    <span className="text-xs text-muted-foreground font-medium">Aperçu</span>
+   941→                  </div>
+   942→                  <div className="glass-subtle flex-1 overflow-hidden">
+   943→                    <DocumentPreview content={editorContent} type={editorType} />
+   944→                  </div>
+   945→                </div>
+   946→              </motion.div>
+   947→            )}
+   948→          </div>
+   949→        </div>
+   950→
+   951→        {/* AI Generation Dialog */}
+   952→        <AIGenerationDialog
+   953→          open={aiDialogOpen}
+   954→          onOpenChange={setAiDialogOpen}
+   955→          onGenerate={handleAIGenerate}
+   956→          isGenerating={isGenerating}
+   957→          initialType={editorType}
+   958→        />
+   959→      </>
+   960→    )
+   961→  }
+   962→
+   963→  /* ─── Render: List View ─── */
+   964→  return (
+   965→    <div className="flex h-full flex-col p-4 md:p-6">
+   966→      {/* Header */}
+   967→      <div className="mb-6 flex items-center justify-between">
+   968→        <div>
+   969→          <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight">
+   970→            <FileText className="size-6 text-primary" />
+   971→            Documents
+   972→          </h1>
+   973→          <p className="mt-1 text-sm text-muted-foreground">
+   974→            Studio de création documentaire
+   975→          </p>
+   976→        </div>
+   977→        <Button
+   978→          className="gap-2"
+   979→          onClick={() =>
+   980→            createDocument('Sans titre', 'markdown', '')
+   981→          }
+   982→        >
+   983→          <Plus className="size-4" />
+   984→          Nouveau Document
+   985→        </Button>
+   986→      </div>
+   987→
+   988→      <AnimatePresence mode="wait">
+   989→        {documents.length === 0 ? (
+   990→          /* ─── Welcome State ─── */
+   991→          <motion.div
+   992→            key="welcome"
+   993→            initial={{ opacity: 0, y: 20 }}
+   994→            animate={{ opacity: 1, y: 0 }}
+   995→            exit={{ opacity: 0, y: -20 }}
+   996→            transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
+   997→            className="flex flex-1 flex-col items-center justify-center"
+   998→          >
+   999→            <div className="flex size-20 items-center justify-center rounded-2xl bg-primary/10 glow-sm mb-6">
+  1000→              <FileText className="size-10 text-primary" />
+  1001→            </div>
+  1002→            <h2 className="text-xl font-semibold">Aucun document</h2>
+  1003→            <p className="mt-2 mb-8 text-sm text-muted-foreground max-w-sm text-center">
+  1004→              Créez votre premier document avec l&apos;aide de l&apos;IA
+  1005→            </p>
+  1006→
+  1007→            <div className="grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-3">
+  1008→              {TEMPLATES.map((template, idx) => {
+  1009→                const Icon = template.icon
+  1010→                return (
+  1011→                  <motion.button
+  1012→                    key={template.name}
+  1013→                    initial={{ opacity: 0, y: 20 }}
+  1014→                    animate={{ opacity: 1, y: 0 }}
+  1015→                    transition={{ duration: 0.35, delay: 0.1 + idx * 0.08 }}
+  1016→                    whileHover={{ y: -4, scale: 1.02 }}
+  1017→                    whileTap={{ scale: 0.98 }}
+  1018→                    onClick={() => createDocument(template.name, template.type, template.content)}
+  1019→                    className="module-card glass group flex flex-col items-center gap-3 rounded-xl p-6 text-center cursor-pointer"
+  1020→                  >
+  1021→                    <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10 transition-colors group-hover:bg-primary/20">
+  1022→                      <Icon className="size-6 text-primary" />
+  1023→                    </div>
+  1024→                    <div>
+  1025→                      <p className="text-sm font-semibold">{template.name}</p>
+  1026→                      <p className="mt-1 text-xs text-muted-foreground">
+  1027→                        {template.description}
+  1028→                      </p>
+  1029→                    </div>
+  1030→                  </motion.button>
+  1031→                )
+  1032→              })}
+  1033→            </div>
+  1034→          </motion.div>
+  1035→        ) : (
+  1036→          /* ─── Document Grid ─── */
+  1037→          <motion.div
+  1038→            key="grid"
+  1039→            variants={containerVariants}
+  1040→            initial="hidden"
+  1041→            animate="visible"
+  1042→            exit="hidden"
+  1043→            className="custom-scrollbar flex-1 overflow-y-auto"
+  1044→          >
+  1045→            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+  1046→              <AnimatePresence>
+  1047→                {documents.map((doc) => {
+  1048→                  const TypeIcon = getDocTypeIcon(doc.type)
+  1049→                  const preview = doc.content.slice(0, 100).replace(/[#*_`~>\[\]()!|-]/g, '').trim()
+  1050→                  return (
+  1051→                    <motion.div
+  1052→                      key={doc.id}
+  1053→                      variants={cardVariants}
+  1054→                      layout
+  1055→                      exit="exit"
+  1056→                      className="module-card glass group flex flex-col rounded-xl p-4 gap-3"
+  1057→                    >
+  1058→                      {/* Card header */}
+  1059→                      <div className="flex items-start gap-3">
+  1060→                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+  1061→                          <TypeIcon className="size-5 text-primary" />
+  1062→                        </div>
+  1063→                        <div className="min-w-0 flex-1">
+  1064→                          <h3 className="truncate text-sm font-semibold leading-tight">
+  1065→                            {doc.title}
+  1066→                          </h3>
+  1067→                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground leading-relaxed">
+  1068→                            {preview || 'Document vide'}
+  1069→                          </p>
+  1070→                        </div>
+  1071→                      </div>
+  1072→
+  1073→                      {/* Badges */}
+  1074→                      <div className="flex items-center gap-2">
+  1075→                        <Badge variant="outline" className="text-[10px] px-2 py-0">
+  1076→                          {getDocTypeLabel(doc.type)}
+  1077→                        </Badge>
+  1078→                        <Badge variant={getStatusVariant(doc.status)} className="text-[10px] px-2 py-0">
+  1079→                          {doc.status === 'brouillon' ? 'Brouillon' : 'Finalisé'}
+  1080→                        </Badge>
+  1081→                        <span className="ml-auto text-[10px] text-muted-foreground/60">
+  1082→                          {relativeTime(doc.updatedAt)}
+  1083→                        </span>
+  1084→                      </div>
+  1085→
+  1086→                      {/* Actions */}
+  1087→                      <div className="flex items-center gap-2 pt-1">
+  1088→                        <Button
+  1089→                          variant="outline"
+  1090→                          size="sm"
+  1091→                          className="flex-1 h-8 text-xs"
+  1092→                          onClick={() => openDocument(doc.id)}
+  1093→                        >
+  1094→                          Ouvrir
+  1095→                        </Button>
+  1096→                        <Button
+  1097→                          variant="ghost"
+  1098→                          size="icon"
+  1099→                          className="size-8 text-muted-foreground hover:text-destructive"
+  1100→                          onClick={() => deleteDocument(doc.id)}
+  1101→                          aria-label="Supprimer le document"
+  1102→                        >
+  1103→                          <Trash2 className="size-3.5" />
+  1104→                        </Button>
+  1105→                      </div>
+  1106→                    </motion.div>
+  1107→                  )
+  1108→                })}
+  1109→              </AnimatePresence>
+  1110→            </div>
+  1111→          </motion.div>
+  1112→        )}
+  1113→      </AnimatePresence>
+  1114→
+  1115→      {/* AI Generation Dialog (list view — for new doc) */}
+  1116→      <AIGenerationDialog
+  1117→        open={aiDialogOpen}
+  1118→        onOpenChange={(open) => {
+  1119→          setAiDialogOpen(open)
+  1120→          if (open) {
+  1121→            createDocument('Document IA', 'markdown', '')
+  1122→          }
+  1123→        }}
+  1124→        onGenerate={handleAIGenerate}
+  1125→        isGenerating={isGenerating}
+  1126→        initialType="markdown"
+  1127→      />
+  1128→    </div>
+  1129→  )
+  1130→}

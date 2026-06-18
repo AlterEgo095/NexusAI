@@ -7,9 +7,8 @@ import {
   Sparkles,
   Download,
   Trash2,
-  Maximize2,
   Wand2,
-  Image,
+  Image as ImageIconLucide,
   Layers,
   ZoomIn,
   Check,
@@ -208,7 +207,6 @@ export default function DesignModule() {
                         : 'hover:ring-1 hover:ring-primary/50'
                     }`}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={image.dataUrl}
                       alt={image.prompt}
@@ -452,7 +450,7 @@ export default function DesignModule() {
                 exit={{ opacity: 0 }}
               >
                 <div className="flex items-center gap-2 mb-4">
-                  <Image className="w-4 h-4 text-muted-foreground" />
+                  <ImageIconLucide className="w-4 h-4 text-muted-foreground" />
                   <h3 className="text-sm font-semibold">
                     Images générées
                   </h3>
@@ -474,7 +472,6 @@ export default function DesignModule() {
                     >
                       {/* Image */}
                       <div className="relative aspect-square bg-muted overflow-hidden">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={image.dataUrl}
                           alt={image.prompt}
@@ -555,7 +552,6 @@ export default function DesignModule() {
                 <div className="glass rounded-2xl p-4 space-y-4">
                   {/* Image */}
                   <div className="relative rounded-xl overflow-hidden bg-black/20">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={previewImage.dataUrl}
                       alt={previewImage.prompt}
