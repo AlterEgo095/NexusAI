@@ -369,3 +369,34 @@ Stage Summary:
 - All 6 default agents upgraded with expanded tool sets
 - Full DB persistence for voice generations and translations
 - Zero lint errors throughout
+
+---
+Task ID: 7
+Agent: Main Coordinator
+Task: Implement 3 additive features (Memory, Timeline, Voice Mode) + push to GitHub
+
+Work Log:
+- Added 2 new Prisma models: Memory (type, key, value, category, source, importance) and DocumentVersion (content, version, changeNote)
+- Pushed schema to DB via `bun run db:push` — zero downtime
+- Created src/lib/memory.ts: saveMemory, recallMemories, getMemoryContext, summarizeToMemory, listMemories, searchMemories, deleteMemory
+- Created src/app/api/memory/route.ts: GET (list/search/recall), POST (create/summarize), DELETE
+- Created src/app/api/timeline/route.ts: GET (filtered timeline with activity + document versions), POST (manual entry)
+- Created src/components/modules/memory-module.tsx: tabs by type, search, create dialog, importance stars, French UI
+- Created src/components/modules/timeline-module.tsx: vertical timeline, type/date filters, relative time, color-coded dots
+- Created src/components/modules/voice-module.tsx: push-to-talk conversation mode, quick note mode, voice selector, waveform
+- Updated workspace-store.ts: added 'memory' | 'timeline' | 'voice' to ModuleId type
+- Updated sidebar.tsx: added 3 new nav items (Mode Vocal, Mémoire, Timeline)
+- Updated page.tsx: added 3 lazy imports and module router entries
+- Updated command-palette.tsx: added 3 new module items
+- Fixed pre-existing bug: setInterval().unref() in rate-limit.ts causing 404s on all API routes in Edge runtime
+- Verified all 11 modules render correctly via agent-browser
+- Verified all APIs work (chat, agents, memory, timeline)
+- ESLint: 0 errors, 0 warnings
+- Pushed to GitHub: commit da08fde
+
+Stage Summary:
+- 3 new modules added to NexusAI Workspace (total: 11 modules)
+- 2 new DB models, 2 new API routes, 3 new UI modules, 1 new lib
+- Purely additive changes — zero modifications to existing module logic
+- Fixed critical pre-existing Edge runtime bug in rate limiter
+- GitHub repo updated: https://github.com/AlterEgo095/NexusAI
