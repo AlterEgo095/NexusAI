@@ -27,6 +27,60 @@ model User {
   voiceGenerations VoiceGeneration[]
   translations  Translation[]
   memories      Memory[]
+  knowledgeBases KnowledgeBase[]
+  orchestrations Orchestration[]
+}
+
+// ... (existing models unchanged)
+
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  content     String
+  version     Int
+  changeNote  String?
+  createdAt   DateTime @default(now())
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId, version])
+}
+
+model KnowledgeBase {
+  id          String            @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  chunks      KnowledgeChunk[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeChunk {
+  id              String        @id @default(cuid())
+  knowledgeBaseId String
+  content         String
+  sourceFile      String
+  chunkIndex      Int
+  metadata        String?       /// JSON with page numbers, section info, etc.
+  createdAt       DateTime      @default(now())
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeBaseId, chunkIndex])
+}
+
+model Orchestration {
+  id          String   @id @default(cuid())
+  userId      String
+  task        String
+  plan        String?          /// JSON array of sub-tasks
+  results     String?          /// JSON array of sub-task results
+  finalAnswer String?
+  status      String   @default("pending") /// pending | planning | executing | synthesizing | completed | failed
+  durationMs  Int?
+  agentIds    String   @default("[]") /// IDs of agents used
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Conversation {
@@ -213,16 +267,4 @@ model Memory {
 
   @@index([userId, type])
   @@index([userId, category])
-}
-
-model DocumentVersion {
-  id          String   @id @default(cuid())
-  documentId  String
-  content     String
-  version     Int
-  changeNote  String?
-  createdAt   DateTime @default(now())
-  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-
-  @@index([documentId, version])
 }

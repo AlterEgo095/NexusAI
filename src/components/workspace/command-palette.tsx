@@ -13,6 +13,8 @@ import {
   Brain,
   Clock,
   Mic,
+  Database,
+  Users,
   Moon,
   Sun,
   Plus,
@@ -41,6 +43,8 @@ const moduleItems: { id: ModuleId; label: string; icon: LucideIcon }[] = [
   { id: 'automation', label: 'Automatisation', icon: Workflow },
   { id: 'voice', label: 'Mode Vocal', icon: Mic },
   { id: 'memory', label: 'Mémoire', icon: Brain },
+  { id: 'knowledge', label: 'RAG', icon: Database },
+  { id: 'orchestrator', label: 'Orchestrateur', icon: Users },
   { id: 'timeline', label: 'Timeline', icon: Clock },
   { id: 'command-center', label: 'Command Center', icon: Monitor },
 ]
