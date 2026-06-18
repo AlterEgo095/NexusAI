@@ -9,11 +9,15 @@ datasource db {
 
 model User {
   id            String           @id @default(cuid())
-  email         String           @unique @default("user@nexusai.local")
+  email         String           @unique
   name          String           @default("NexusAI User")
+  password      String?          /// hashed password (null for OAuth-only users)
   avatar        String?
-  role          String           @default("admin")
+  role          String           @default("user") /// user | admin | superadmin
   credits       Int              @default(10000)
+  language      String           @default("fr") /// fr | en | es | de | ar | zh
+  isOnline      Boolean          @default(false)
+  lastSeen      DateTime?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   conversations Conversation[]

@@ -8,7 +8,10 @@ import { useWorkspaceStore } from '@/store/workspace-store'
 import { WorkspaceSidebar } from '@/components/workspace/sidebar'
 import { CommandPalette } from '@/components/workspace/command-palette'
 import { ThemeToggle } from '@/components/workspace/theme-toggle'
+import { UserMenu } from '@/components/auth/user-menu'
+import { AuthDialogs } from '@/components/auth/auth-dialogs'
 import { Button } from '@/components/ui/button'
+import { useState } from 'react'
 
 // Lazy load all modules for performance
 const HomeModule = lazy(() => import('@/components/modules/home-module'))
@@ -28,6 +31,8 @@ const CanvasModule = lazy(() => import('@/components/modules/canvas-module'))
 const BrowserModule = lazy(() => import('@/components/modules/browser-module'))
 const TerminalModule = lazy(() => import('@/components/modules/terminal-module'))
 const McpModule = lazy(() => import('@/components/modules/mcp-module'))
+const SettingsModule = lazy(() => import('@/components/modules/settings-module'))
+const AdminModule = lazy(() => import('@/components/modules/admin-module'))
 
 function ModuleLoader() {
   return (
@@ -61,6 +66,8 @@ function ModuleRouter() {
     browser: BrowserModule,
     terminal: TerminalModule,
     mcp: McpModule,
+    settings: SettingsModule,
+    admin: AdminModule,
   }
 
   const ModuleComponent = modules[activeModule] || HomeModule
@@ -84,8 +91,10 @@ function ModuleRouter() {
 }
 
 function TopBar() {
-  const { toggleSidebar, setCommandOpen } = useWorkspaceStore()
+  const { toggleSidebar, setCommandOpen, setActiveModule } = useWorkspaceStore()
   const isMobile = useIsMobile()
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [registerOpen, setRegisterOpen] = useState(false)
 
   return (
     <header className="glass-strong sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border/50 px-4">
@@ -116,9 +125,15 @@ function TopBar() {
 
       <div className="flex-1" />
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <ThemeToggle />
+        <UserMenu onLoginClick={() => setLoginOpen(true)} onNavigate={(mod) => { setActiveModule(mod as any) }} />
       </div>
+      <AuthDialogs
+        loginOpen={loginOpen} setLoginOpen={setLoginOpen}
+        registerOpen={registerOpen} setRegisterOpen={setRegisterOpen}
+        onSuccess={() => {}}
+ />
     </header>
   )
 }

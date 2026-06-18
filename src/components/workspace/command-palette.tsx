@@ -23,6 +23,7 @@ import {
   Globe,
   TerminalSquare,
   Plug,
+  Shield,
   type LucideIcon,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -55,6 +56,8 @@ const moduleItems: { id: ModuleId; label: string; icon: LucideIcon }[] = [
   { id: 'browser', label: 'Browser Agent', icon: Globe },
   { id: 'terminal', label: 'Terminal IA', icon: TerminalSquare },
   { id: 'mcp', label: 'MCP', icon: Plug },
+  { id: 'settings', label: 'Paramètres', icon: Settings },
+  { id: 'admin', label: 'Admin', icon: Shield },
 ]
 
 export function CommandPalette() {

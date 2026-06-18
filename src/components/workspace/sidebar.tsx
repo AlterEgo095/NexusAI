@@ -24,6 +24,8 @@ import {
   Globe,
   TerminalSquare,
   Plug,
+  Settings,
+  Shield,
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useWorkspaceStore, type ModuleId } from '@/store/workspace-store'
@@ -44,10 +46,11 @@ import {
 } from '@/components/ui/tooltip'
 
 interface NavItem {
-  id: ModuleId
-  label: string
-  icon: React.ElementType
+  id?: ModuleId
+  label?: string
+  icon?: React.ElementType
   shortcut?: string
+  separator?: boolean
 }
 
 const navItems: NavItem[] = [
@@ -68,6 +71,9 @@ const navItems: NavItem[] = [
   { id: 'browser', label: 'Browser Agent', icon: Globe },
   { id: 'terminal', label: 'Terminal IA', icon: TerminalSquare },
   { id: 'mcp', label: 'MCP', icon: Plug },
+  { separator: true },
+  { id: 'settings', label: 'Paramètres', icon: Settings },
+  { id: 'admin', label: 'Admin', icon: Shield },
 ]
 
 function SidebarNavContent({
@@ -90,7 +96,14 @@ function SidebarNavContent({
   return (
     <nav className="flex flex-1 flex-col gap-1 px-3 py-2" aria-label="Main navigation">
       <ul className="flex flex-col gap-1">
-        {navItems.map((item) => {
+        {navItems.map((item, idx) => {
+          if (item.separator) {
+            return (
+              <li key={`sep-${idx}`} className="my-2">
+                <Separator />
+              </li>
+            )
+          }
           const isActive = activeModule === item.id
           const Icon = item.icon
 
