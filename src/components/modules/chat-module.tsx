@@ -23,6 +23,12 @@ import {
   Bot,
   PanelLeftClose,
   PanelLeftOpen,
+  Volume2,
+  Mic,
+  MicOff,
+  ImageIcon as ImageIconLucide,
+  X,
+  Loader2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -142,6 +148,61 @@ function CodeBlock({
   )
 }
 
+/* ─── TTS Play Button ─── */
+function TTSButton({ text }: { text: string }) {
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const handlePlay = useCallback(async () => {
+    if (isPlaying && audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+      setIsPlaying(false)
+      return
+    }
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: text.substring(0, 1000), voice: 'tongtong', speed: 1.0 }),
+      })
+      const data = await res.json()
+      if (data.success && data.audio) {
+        const byteChars = atob(data.audio)
+        const byteArray = new Uint8Array(byteChars.length)
+        for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i)
+        const blob = new Blob([byteArray], { type: 'audio/wav' })
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audioRef.current = audio
+        audio.onended = () => { setIsPlaying(false); URL.revokeObjectURL(url) }
+        audio.play()
+        setIsPlaying(true)
+      } else {
+        toast.error('Erreur de synthèse vocale')
+      }
+    } catch {
+      toast.error('Erreur de synthèse vocale')
+    } finally {
+      setIsLoading(false)
+    }
+  }, [text, isPlaying])
+
+  return (
+    <button
+      onClick={handlePlay}
+      disabled={isLoading}
+      className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40"
+      aria-label={isPlaying ? 'Arrêter' : 'Écouter'}
+      title="Synthèse vocale"
+    >
+      {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : isPlaying ? <Square className="w-3.5 h-3.5" fill="currentColor" /> : <Volume2 className="w-3.5 h-3.5" />}
+    </button>
+  )
+}
+
 /* ─── Message Bubble ─── */
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
@@ -178,7 +239,7 @@ function MessageBubble({ message }: { message: Message }) {
           isUser ? 'items-end' : 'items-start'
         } flex flex-col gap-1`}
       >
-        {/* Role label + time */}
+        {/* Role label + time + TTS */}
         <div
           className={`flex items-center gap-2 text-xs text-muted-foreground ${
             isUser ? 'flex-row-reverse' : 'flex-row'
@@ -188,6 +249,7 @@ function MessageBubble({ message }: { message: Message }) {
             {isUser ? 'Vous' : 'NexusAI'}
           </span>
           <span>{timeStr}</span>
+          {!isUser && message.content.length > 10 && <TTSButton text={message.content} />}
         </div>
 
         {/* Bubble */}
@@ -341,8 +403,12 @@ function WelcomeScreen({ onSuggestionClick }: { onSuggestionClick: (text: string
 export default function ChatModule() {
   const [input, setInput] = useState('')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [isRecording, setIsRecording] = useState(false)
+  const [attachedImage, setAttachedImage] = useState<string | null>(null)
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const dbLoadedRef = useRef(false)
 
   // Store selectors
@@ -376,6 +442,114 @@ export default function ChatModule() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isGenerating])
+
+  // ─── Mic recording (ASR) ───
+  const toggleRecording = useCallback(async () => {
+    if (isRecording && mediaRecorderRef.current) {
+      mediaRecorderRef.current.stop()
+      setIsRecording(false)
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      const chunks: BlobPart[] = []
+      recorder.ondataavailable = (e) => chunks.push(e.data)
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(chunks, { type: 'audio/webm' })
+        const reader = new FileReader()
+        reader.onloadend = async () => {
+          const base64 = (reader.result as string).split(',')[1]
+          try {
+            const res = await fetch('/api/asr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audio: base64 }),
+            })
+            const data = await res.json()
+            if (data.success && data.text) {
+              setInput((prev) => (prev ? prev + ' ' + data.text : data.text))
+              toast.success('Audio transcrit')
+            } else {
+              toast.error('Transcription échouée')
+            }
+          } catch {
+            toast.error('Erreur de transcription')
+          }
+        }
+        reader.readAsDataURL(blob)
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setIsRecording(true)
+      toast.info('Enregistrement en cours...')
+    } catch {
+      toast.error('Micro non disponible')
+    }
+  }, [isRecording])
+
+  // ─── Image upload for VLM ───
+  const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Veuillez sélectionner une image')
+      return
+    }
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      setAttachedImage(reader.result as string)
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
+  const handleRemoveImage = useCallback(() => {
+    setAttachedImage(null)
+  }, [])
+
+  const handleAnalyzeImage = useCallback(async () => {
+    if (!attachedImage) return
+    const store = useWorkspaceStore.getState()
+    let convId = store.activeConversationId
+    if (!convId) convId = store.createConversation()
+
+    const question = input.trim() || 'Décrivez cette image en détail'
+    store.addMessage(convId, {
+      id: `msg-${Date.now()}`,
+      role: 'user',
+      content: `[Image jointe] ${question}`,
+      createdAt: new Date(),
+    })
+    setInput('')
+    setAttachedImage(null)
+    store.setIsGenerating(true)
+    setIsAnalyzingImage(true)
+
+    try {
+      const res = await fetch('/api/vision', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: attachedImage, question }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        store.addMessage(convId, {
+          id: `msg-${Date.now()}-ai`,
+          role: 'assistant',
+          content: data.analysis,
+          createdAt: new Date(),
+        })
+      } else {
+        toast.error(data.error || "Erreur d'analyse d'image")
+      }
+    } catch {
+      toast.error("Erreur d'analyse d'image")
+    } finally {
+      store.setIsGenerating(false)
+      setIsAnalyzingImage(false)
+    }
+  }, [attachedImage, input])
 
   // ─── Send message logic ───
   const sendMessage = useCallback(
@@ -687,35 +861,54 @@ export default function ChatModule() {
                       }}
                     />
                     <div className="flex items-center justify-between px-2 pb-1">
-                      <div className="text-[11px] text-muted-foreground/40">
-                        <kbd className="px-1.5 py-0.5 rounded bg-muted/50 text-[10px] font-mono">
-                          Enter
-                        </kbd>{' '}
-                        pour envoyer ·{' '}
-                        <kbd className="px-1.5 py-0.5 rounded bg-muted/50 text-[10px] font-mono">
-                          Shift+Enter
-                        </kbd>{' '}
-                        nouvelle ligne
+                      <div className="flex items-center gap-1">
+                        {/* Attached image preview */}
+                        {attachedImage && (
+                          <div className="relative group">
+                            <img src={attachedImage} alt="Image jointe" className="w-8 h-8 rounded-lg object-cover border border-border" />
+                            <button onClick={handleRemoveImage} className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        )}
+                        <input type="file" accept="image/*" className="hidden" id="chat-image-upload" onChange={handleImageUpload} />
+                        <button
+                          onClick={() => document.getElementById('chat-image-upload')?.click()}
+                          className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
+                          title="Joindre une image"
+                          aria-label="Joindre une image"
+                        >
+                          <ImageIconLucide className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={toggleRecording}
+                          className={`p-1.5 rounded-lg transition-colors ${isRecording ? 'text-red-500 hover:bg-red-500/10' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+                          title={isRecording ? 'Arrêter l\'enregistrement' : 'Enregistrer l\'audio'}
+                          aria-label={isRecording ? 'Arrêter' : 'Micro'}
+                        >
+                          {isRecording ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
+                        </button>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        {isGenerating ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground/40 hidden sm:inline">
+                          <kbd className="px-1.5 py-0.5 rounded bg-muted/50 text-[10px] font-mono">Enter</kbd> envoyer
+                        </span>
+                        {attachedImage ? (
                           <Button
-                            size="icon"
-                            variant="destructive"
-                            className="rounded-xl h-9 w-9"
-                            onClick={() => setIsGenerating(false)}
-                            aria-label="Arrêter la génération"
+                            size="sm"
+                            disabled={isAnalyzingImage}
+                            className="rounded-xl h-9 gap-1.5"
+                            onClick={handleAnalyzeImage}
                           >
+                            {isAnalyzingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIconLucide className="w-4 h-4" />}
+                            Analyser
+                          </Button>
+                        ) : isGenerating ? (
+                          <Button size="icon" variant="destructive" className="rounded-xl h-9 w-9" onClick={() => setIsGenerating(false)} aria-label="Arrêter">
                             <Square className="w-4 h-4" fill="currentColor" />
                           </Button>
                         ) : (
-                          <Button
-                            size="icon"
-                            disabled={!input.trim()}
-                            className="rounded-xl h-9 w-9"
-                            onClick={() => sendMessage(input)}
-                            aria-label="Envoyer le message"
-                          >
+                          <Button size="icon" disabled={!input.trim()} className="rounded-xl h-9 w-9" onClick={() => sendMessage(input)} aria-label="Envoyer">
                             <SendHorizontal className="w-4 h-4" />
                           </Button>
                         )}

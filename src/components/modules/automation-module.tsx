@@ -53,7 +53,7 @@ import { toast } from 'sonner'
 /* ─── Types ─── */
 interface WorkflowNode {
   id: string
-  type: 'trigger' | 'action' | 'condition' | 'output'
+  type: 'trigger' | 'action' | 'condition' | 'output' | 'delay' | 'loop' | 'transform' | 'http_request' | 'notification'
   label: string
   config: Record<string, unknown>
   position: { x: number; y: number }
@@ -127,6 +127,11 @@ const NODE_TYPE_CONFIG: Record<string, { icon: typeof Zap; color: string; bg: st
   action: { icon: ArrowRight, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'Action' },
   condition: { icon: GitBranch, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Condition' },
   output: { icon: FileOutput, color: 'text-sky-500', bg: 'bg-sky-500/10', label: 'Sortie' },
+  delay: { icon: Clock, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Délai' },
+  loop: { icon: Workflow, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Boucle' },
+  transform: { icon: Search, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'Transformation' },
+  http_request: { icon: Zap, color: 'text-orange-500', bg: 'bg-orange-500/10', label: 'Requête HTTP' },
+  notification: { icon: Bell, color: 'text-rose-500', bg: 'bg-rose-500/10', label: 'Notification' },
 }
 
 const ADDABLE_NODE_TYPES: { type: WorkflowNode['type']; label: string }[] = [
@@ -134,6 +139,11 @@ const ADDABLE_NODE_TYPES: { type: WorkflowNode['type']; label: string }[] = [
   { type: 'action', label: 'Action' },
   { type: 'condition', label: 'Condition' },
   { type: 'output', label: 'Sortie' },
+  { type: 'delay', label: 'Délai' },
+  { type: 'loop', label: 'Boucle' },
+  { type: 'transform', label: 'Transformation' },
+  { type: 'http_request', label: 'Requête HTTP' },
+  { type: 'notification', label: 'Notification' },
 ]
 
 /* ─── Helpers ─── */
@@ -715,8 +725,8 @@ function WorkflowEditor({
       const newNode: WorkflowNode = {
         id: `node-${Date.now()}`,
         type,
-        label: type === 'trigger' ? 'Nouveau Déclencheur' : type === 'action' ? 'Nouvelle Action' : type === 'condition' ? 'Nouvelle Condition' : 'Nouvelle Sortie',
-        config: {},
+        label: type === 'trigger' ? 'Nouveau Déclencheur' : type === 'action' ? 'Nouvelle Action' : type === 'condition' ? 'Nouvelle Condition' : type === 'output' ? 'Nouvelle Sortie' : type === 'delay' ? 'Délai' : type === 'loop' ? 'Boucle' : type === 'transform' ? 'Transformation' : type === 'http_request' ? 'Requête HTTP' : 'Notification',
+        config: type === 'delay' ? { duration: 3000 } : type === 'loop' ? { iterations: 3, repeatCount: 1 } : type === 'transform' ? { instruction: 'Transforme les données' } : type === 'http_request' ? { url: '', method: 'GET' } : type === 'notification' ? { channel: 'email', message: '' } : {},
         position: { x: 200 + Math.random() * 300, y: 100 + Math.random() * 200 },
       }
       setNodes((prev) => [...prev, newNode])
@@ -1111,6 +1121,134 @@ function WorkflowEditor({
                       }
                       className="h-8 text-sm"
                       placeholder="email, slack, fichier..."
+                    />
+                  </div>
+                )}
+
+                {selectedNode.type === 'delay' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="delay-duration">Durée (ms)</Label>
+                    <Input
+                      id="delay-duration"
+                      type="number"
+                      min={0}
+                      max={60000}
+                      value={(selectedNode.config.duration as number) || 3000}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, duration: parseInt(e.target.value) || 3000 },
+                        })
+                      }
+                      className="h-8 text-sm"
+                      placeholder="3000"
+                    />
+                  </div>
+                )}
+
+                {selectedNode.type === 'loop' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="loop-iterations">Nœuds à répéter</Label>
+                    <Input
+                      id="loop-iterations"
+                      type="number"
+                      min={1}
+                      max={10}
+                      value={(selectedNode.config.iterations as number) || 3}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, iterations: parseInt(e.target.value) || 3 },
+                        })
+                      }
+                      className="h-8 text-sm"
+                    />
+                    <Label htmlFor="loop-repeat">Nombre de répétitions</Label>
+                    <Input
+                      id="loop-repeat"
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={(selectedNode.config.repeatCount as number) || 1}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, repeatCount: parseInt(e.target.value) || 1 },
+                        })
+                      }
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                )}
+
+                {selectedNode.type === 'transform' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="transform-instruction">Instruction de transformation</Label>
+                    <Input
+                      id="transform-instruction"
+                      value={(selectedNode.config.instruction as string) || ''}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, instruction: e.target.value },
+                        })
+                      }
+                      className="h-8 text-sm"
+                      placeholder="Convertir en JSON, résumer, extraire..."
+                    />
+                  </div>
+                )}
+
+                {selectedNode.type === 'http_request' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="http-url">URL</Label>
+                    <Input
+                      id="http-url"
+                      value={(selectedNode.config.url as string) || ''}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, url: e.target.value },
+                        })
+                      }
+                      className="h-8 text-sm"
+                      placeholder="https://api.example.com"
+                    />
+                    <Label htmlFor="http-method">Méthode</Label>
+                    <Input
+                      id="http-method"
+                      value={(selectedNode.config.method as string) || 'GET'}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, method: e.target.value },
+                        })
+                      }
+                      className="h-8 text-sm"
+                      placeholder="GET, POST, PUT..."
+                    />
+                  </div>
+                )}
+
+                {selectedNode.type === 'notification' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="notif-channel">Canal</Label>
+                    <Input
+                      id="notif-channel"
+                      value={(selectedNode.config.channel as string) || 'email'}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, channel: e.target.value },
+                        })
+                      }
+                      className="h-8 text-sm"
+                      placeholder="email, slack, discord..."
+                    />
+                    <Label htmlFor="notif-message">Message</Label>
+                    <Input
+                      id="notif-message"
+                      value={(selectedNode.config.message as string) || ''}
+                      onChange={(e) =>
+                        updateNodeConfig(selectedNode.id, {
+                          config: { ...selectedNode.config, message: e.target.value },
+                        })
+                      }
+                      className="h-8 text-sm"
+                      placeholder="Contenu de la notification..."
                     />
                   </div>
                 )}

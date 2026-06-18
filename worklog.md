@@ -333,3 +333,39 @@ Stage Summary:
 - Automations create/read/update/delete via API with real workflow execution and result display
 - All existing UI/CSS/animations/Framer Motion code preserved unchanged
 - Zero lint errors
+---
+Task ID: 6
+Agent: Main Coordinator
+Task: Major platform upgrade — 18 tools, 4 new APIs, 9 workflow nodes, voice/vision/chat multimodal
+
+Work Log:
+- Upgraded agent-tools.ts from 10 to 18 tools across 7 categories (search, dev, content, data, multimodal, voice, productivity)
+- Fixed web_reader tool to use real SDK `page_reader` function instead of web_search fallback
+- Added 8 new tools: translation, sentiment_analysis, keyword_extraction, image_analysis (VLM), text_to_speech (TTS), speech_to_text (ASR), email_composer, math_evaluation
+- Added tool categorization system (TOOL_CATEGORIES) and TTS voice definitions (TTS_VOICES, 7 voices)
+- Created /api/tts/route.ts — TTS with chunking for >1024 chars, 7 voice options, DB persistence
+- Created /api/asr/route.ts — Speech-to-text accepting base64 audio uploads
+- Created /api/vision/route.ts — Vision Language Model for image analysis using createVision API
+- Created /api/translate/route.ts — Translation API with source language detection, DB persistence
+- Upgraded workflow-engine.ts from 4 to 9 node types: trigger, action, condition, output, delay, loop, transform, http_request, notification
+- Added VariableContext system to workflow engine with {{variable}} template resolution
+- Updated Prisma schema: added VoiceGeneration and Translation models, added voiceRequests/visionRequests/translationRequests to UsageStats
+- Updated ensure-user.ts to support new usage increment fields
+- Updated stats API to include totalVoices, totalTranslations, and new daily/weekly fields
+- Updated agents API: default agents now use expanded tool sets (more tools per agent)
+- Added TTS play button on every assistant message in Chat module
+- Added microphone button for real-time speech-to-text input in Chat
+- Added image upload + VLM analysis in Chat module (upload image → ask question → get AI analysis)
+- Updated automation module frontend: 5 new node types with config panels, 9 addable node types total
+- Updated workspace store DbStats interface with new fields
+- Updated Command Center to aggregate all request types
+- Updated Home module quick actions
+
+Stage Summary:
+- 18 AI-powered tools available to agents (was 10), organized in 7 categories
+- 4 new API routes: TTS, ASR, Vision, Translation
+- 9 workflow node types (was 4) with variable system and template resolution
+- Chat module now supports: voice playback (TTS), voice input (ASR), image analysis (VLM)
+- All 6 default agents upgraded with expanded tool sets
+- Full DB persistence for voice generations and translations
+- Zero lint errors throughout

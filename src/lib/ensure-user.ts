@@ -23,7 +23,7 @@ export async function logActivity(type: string, action: string, details?: string
   })
 }
 
-export async function incrementUsage(field: 'chatRequests' | 'searchRequests' | 'imageRequests' | 'agentRequests' | 'automationRuns' | 'tokensUsed', amount: number = 1) {
+export async function incrementUsage(field: 'chatRequests' | 'searchRequests' | 'imageRequests' | 'agentRequests' | 'automationRuns' | 'voiceRequests' | 'visionRequests' | 'translationRequests' | 'tokensUsed', amount: number = 1) {
   const user = await ensureDefaultUser()
   const today = new Date().toISOString().split('T')[0]
   const stat = await db.usageStats.upsert({

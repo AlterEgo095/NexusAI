@@ -89,6 +89,8 @@ export interface DbStats {
   totalImages: number
   totalAgents: number
   activeAutomations: number
+  totalVoices: number
+  totalTranslations: number
   creditsRemaining: number
   today: {
     chatRequests: number
@@ -96,6 +98,9 @@ export interface DbStats {
     imageRequests: number
     agentRequests: number
     automationRuns: number
+    voiceRequests: number
+    visionRequests: number
+    translationRequests: number
     tokensUsed: number
   }
   weeklyTrend: Array<{
@@ -105,6 +110,9 @@ export interface DbStats {
     imageRequests: number
     agentRequests: number
     automationRuns: number
+    voiceRequests: number
+    visionRequests: number
+    translationRequests: number
     tokensUsed: number
   }>
 }

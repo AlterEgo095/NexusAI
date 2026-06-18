@@ -14,6 +14,8 @@ export async function GET() {
       totalImages,
       totalAgents,
       activeAutomations,
+      totalVoices,
+      totalTranslations,
     ] = await Promise.all([
       db.conversation.count({ where: { userId: user.id } }),
       db.message.count({ where: { conversation: { userId: user.id } } }),
@@ -21,6 +23,8 @@ export async function GET() {
       db.imageGeneration.count({ where: { userId: user.id } }),
       db.customAgent.count({ where: { userId: user.id } }),
       db.automation.count({ where: { userId: user.id, isActive: true } }),
+      db.voiceGeneration.count({ where: { userId: user.id } }),
+      db.translation.count({ where: { userId: user.id } }),
     ])
 
     // Today's usage
@@ -49,6 +53,9 @@ export async function GET() {
       imageRequests: s.imageRequests,
       agentRequests: s.agentRequests,
       automationRuns: s.automationRuns,
+      voiceRequests: s.voiceRequests,
+      visionRequests: s.visionRequests,
+      translationRequests: s.translationRequests,
       tokensUsed: s.tokensUsed,
     }))
 
@@ -64,6 +71,8 @@ export async function GET() {
         totalImages,
         totalAgents,
         activeAutomations,
+        totalVoices,
+        totalTranslations,
         creditsRemaining: updatedUser?.credits ?? 0,
         today: {
           chatRequests: todayStats?.chatRequests ?? 0,
@@ -71,6 +80,9 @@ export async function GET() {
           imageRequests: todayStats?.imageRequests ?? 0,
           agentRequests: todayStats?.agentRequests ?? 0,
           automationRuns: todayStats?.automationRuns ?? 0,
+          voiceRequests: todayStats?.voiceRequests ?? 0,
+          visionRequests: todayStats?.visionRequests ?? 0,
+          translationRequests: todayStats?.translationRequests ?? 0,
           tokensUsed: todayStats?.tokensUsed ?? 0,
         },
         weeklyTrend: dailyTrend,

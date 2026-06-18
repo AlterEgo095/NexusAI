@@ -124,7 +124,7 @@ function StatsCards() {
   const customAgents = useWorkspaceStore((s) => s.customAgents)
 
   const todayRequests = stats
-    ? stats.today.chatRequests + stats.today.searchRequests + stats.today.imageRequests + stats.today.agentRequests
+    ? stats.today.chatRequests + stats.today.searchRequests + stats.today.imageRequests + stats.today.agentRequests + stats.today.voiceRequests + stats.today.visionRequests + stats.today.translationRequests
     : 0
   const totalAgents = stats?.totalAgents ?? customAgents.length
   const tokensUsed = stats?.today.tokensUsed ?? 0

@@ -24,6 +24,8 @@ model User {
   images        ImageGeneration[]
   activities    ActivityLog[]
   usageStats    UsageStats[]
+  voiceGenerations VoiceGeneration[]
+  translations  Translation[]
 }
 
 model Conversation {
@@ -158,9 +160,36 @@ model UsageStats {
   imageRequests Int @default(0)
   agentRequests Int @default(0)
   automationRuns Int @default(0)
+  voiceRequests Int @default(0)
+  visionRequests Int @default(0)
+  translationRequests Int @default(0)
   tokensUsed Int @default(0)
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
+}
+
+model VoiceGeneration {
+  id        String   @id @default(cuid())
+  userId    String
+  text      String
+  voice     String   @default("tongtong")
+  speed     Float    @default(1.0)
+  format    String   @default("wav")
+  audioData String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Translation {
+  id          String   @id @default(cuid())
+  userId      String
+  sourceText  String
+  translatedText String
+  sourceLang  String   @default("auto")
+  targetLang  String
+  provider    String   @default("llm")
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
