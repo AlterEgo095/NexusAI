@@ -1,6 +1,6 @@
 'use client'
 
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, Command, Loader2 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -11,9 +11,8 @@ import { ThemeToggle } from '@/components/workspace/theme-toggle'
 import { UserMenu } from '@/components/auth/user-menu'
 import { AuthDialogs } from '@/components/auth/auth-dialogs'
 import { Button } from '@/components/ui/button'
-import { useState } from 'react'
 
-// Lazy load all modules for performance
+// Lazy load all modules for code splitting
 const HomeModule = lazy(() => import('@/components/modules/home-module'))
 const ChatModule = lazy(() => import('@/components/modules/chat-module'))
 const SearchModule = lazy(() => import('@/components/modules/search-module'))
@@ -37,6 +36,31 @@ const ConnectorsModule = lazy(() => import('@/components/modules/connectors-modu
 const SettingsModule = lazy(() => import('@/components/modules/settings-module'))
 const AdminModule = lazy(() => import('@/components/modules/admin-module'))
 
+const moduleComponents: Record<string, React.ComponentType> = {
+  home: HomeModule,
+  chat: ChatModule,
+  search: SearchModule,
+  design: DesignModule,
+  documents: DocumentsModule,
+  agents: AgentsModule,
+  automation: AutomationModule,
+  voice: VoiceModule,
+  memory: MemoryModule,
+  knowledge: KnowledgeModule,
+  orchestrator: OrchestratorModule,
+  timeline: TimelineModule,
+  'command-center': CommandCenterModule,
+  canvas: CanvasModule,
+  browser: BrowserModule,
+  terminal: TerminalModule,
+  mcp: McpModule,
+  marketplace: MarketplaceModule,
+  composer: ComposerModule,
+  connectors: ConnectorsModule,
+  settings: SettingsModule,
+  admin: AdminModule,
+}
+
 function ModuleLoader() {
   return (
     <div className="flex h-full items-center justify-center">
@@ -50,33 +74,7 @@ function ModuleLoader() {
 
 function ModuleRouter() {
   const activeModule = useWorkspaceStore((s) => s.activeModule)
-
-  const modules: Record<string, React.ComponentType> = {
-    home: HomeModule,
-    chat: ChatModule,
-    search: SearchModule,
-    design: DesignModule,
-    documents: DocumentsModule,
-    agents: AgentsModule,
-    automation: AutomationModule,
-    voice: VoiceModule,
-    memory: MemoryModule,
-    knowledge: KnowledgeModule,
-    orchestrator: OrchestratorModule,
-    timeline: TimelineModule,
-    'command-center': CommandCenterModule,
-    canvas: CanvasModule,
-    browser: BrowserModule,
-    terminal: TerminalModule,
-    mcp: McpModule,
-    marketplace: MarketplaceModule,
-    composer: ComposerModule,
-    connectors: ConnectorsModule,
-    settings: SettingsModule,
-    admin: AdminModule,
-  }
-
-  const ModuleComponent = modules[activeModule] || HomeModule
+  const ModuleComponent = moduleComponents[activeModule] || HomeModule
 
   return (
     <AnimatePresence mode="wait">
@@ -139,7 +137,7 @@ function TopBar() {
         loginOpen={loginOpen} setLoginOpen={setLoginOpen}
         registerOpen={registerOpen} setRegisterOpen={setRegisterOpen}
         onSuccess={() => {}}
- />
+      />
     </header>
   )
 }

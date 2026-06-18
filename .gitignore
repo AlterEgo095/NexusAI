@@ -72,3 +72,8 @@ agent-ctx/
 
 # Downloads
 download/public/generated/
+
+# Temp files
+screenshot-*.png
+*.bak
+run-dev.sh
