@@ -8,38 +8,42 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  avatar    String?
-  role      String   @default("user")
-  credits   Int      @default(1000)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String           @id @default(cuid())
+  email         String           @unique @default("user@nexusai.local")
+  name          String           @default("NexusAI User")
+  avatar        String?
+  role          String           @default("admin")
+  credits       Int              @default(10000)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
   conversations Conversation[]
-  agents      CustomAgent[]
-  documents   Document[]
-  automations Automation[]
+  agents        CustomAgent[]
+  documents     Document[]
+  automations   Automation[]
+  searchHistory SearchHistory[]
+  images        ImageGeneration[]
+  activities    ActivityLog[]
+  usageStats    UsageStats[]
 }
 
 model Conversation {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String   @default("Nouvelle conversation")
-  model     String   @default("default")
-  messages  Message[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
+  id             String    @id @default(cuid())
+  userId         String
+  title          String    @default("Nouvelle conversation")
+  model          String    @default("default")
+  messages       Message[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Message {
-  id             String   @id @default(cuid())
+  id             String      @id @default(cuid())
   conversationId String
   role           String
   content        String
   thinking       String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime    @default(now())
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
 
@@ -51,11 +55,24 @@ model CustomAgent {
   role        String
   systemPrompt String
   tools       String   @default("[]")
-  avatar      String?
+  avatar      String   @default("🤖")
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions  AgentExecution[]
+}
+
+model AgentExecution {
+  id          String   @id @default(cuid())
+  agentId     String
+  input       String
+  output      String?
+  toolCalls   String   @default("[]")
+  status      String   @default("pending")
+  durationMs  Int?
+  createdAt   DateTime @default(now())
+  agent       CustomAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
 model Document {
@@ -63,47 +80,87 @@ model Document {
   userId    String
   title     String
   type      String   @default("markdown")
-  content   String
+  content   String   @default("")
   status    String   @default("draft")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Automation {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   userId      String
   name        String
   description String?
-  trigger     String   @default("manual")
+  trigger     String           @default("manual")
+  triggerConfig String         @default("{}")
   workflow    String
-  isActive    Boolean  @default(false)
+  isActive    Boolean          @default(false)
   lastRun     DateTime?
+  runCount    Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions  WorkflowExecution[]
+}
+
+model WorkflowExecution {
+  id          String   @id @default(cuid())
+  automationId String
+  status      String   @default("running")
+  result      String?
+  error       String?
+  durationMs  Int?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id])
+  automation  Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
 }
 
 model SearchHistory {
   id        String   @id @default(cuid())
+  userId    String
   query     String
   results   String?
   summary   String?
+  filter    String   @default("all")
+  resultCount Int    @default(0)
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ImageGeneration {
   id        String   @id @default(cuid())
+  userId    String
   prompt    String
   size      String   @default("1024x1024")
+  style     String?
   imageData String
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ActivityLog {
   id        String   @id @default(cuid())
+  userId    String
   type      String
   action    String
   details   String?
+  metadata  String?
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UsageStats {
+  id        String   @id @default(cuid())
+  userId    String
+  date      String
+  chatRequests  Int @default(0)
+  searchRequests Int @default(0)
+  imageRequests Int @default(0)
+  agentRequests Int @default(0)
+  automationRuns Int @default(0)
+  tokensUsed Int @default(0)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
 }

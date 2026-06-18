@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { toast } from 'sonner'
 import { useWorkspaceStore, type SearchResult } from '@/store/workspace-store'
 
 const FILTER_CHIPS = [
@@ -81,7 +82,7 @@ export default function SearchModule() {
           })
         }
       } catch {
-        // handle error silently
+        toast.error('Erreur lors de la recherche')
       } finally {
         setIsSearching(false)
       }

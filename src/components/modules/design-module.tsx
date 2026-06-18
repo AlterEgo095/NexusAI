@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Palette,
@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Progress } from '@/components/ui/progress'
-import { useWorkspaceStore, type GeneratedImage } from '@/store/workspace-store'
+import { toast } from 'sonner'
+import { useWorkspaceStore, type GeneratedImage, fetchImagesFromDB } from '@/store/workspace-store'
 
 const STYLE_PRESETS = [
   { label: 'Photoréaliste', emoji: '📷' },
@@ -61,6 +62,7 @@ export default function DesignModule() {
   const [previewImage, setPreviewImage] = useState<GeneratedImage | null>(null)
   const [progress, setProgress] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dbLoadedRef = useRef(false)
 
   const generatedImages = useWorkspaceStore((s) => s.generatedImages)
   const isGeneratingImage = useWorkspaceStore((s) => s.isGeneratingImage)
@@ -68,6 +70,23 @@ export default function DesignModule() {
   const addGeneratedImage = useWorkspaceStore((s) => s.addGeneratedImage)
 
   const hasImages = generatedImages.length > 0
+
+  // Load images from DB on mount (only metadata — actual images need fresh generation)
+  useEffect(() => {
+    if (dbLoadedRef.current) return
+    dbLoadedRef.current = true
+    fetchImagesFromDB().then((dbImages) => {
+      // Only add images that have dataUrl (i.e. generated in current session)
+      // DB-loaded images won't have dataUrl since API GET doesn't return imageData
+      const imagesWithData = dbImages.filter((img) => img.dataUrl)
+      if (imagesWithData.length > 0) {
+        const store = useWorkspaceStore.getState()
+        useWorkspaceStore.setState({
+          generatedImages: [...imagesWithData, ...store.generatedImages],
+        })
+      }
+    })
+  }, [])
 
   const generateImage = useCallback(
     async (imagePrompt: string, size: string) => {
@@ -112,7 +131,7 @@ export default function DesignModule() {
           setTimeout(() => setProgress(0), 500)
         }
       } catch {
-        // handle error silently
+        toast.error('Erreur lors de la génération de l\'image')
       } finally {
         clearInterval(progressInterval)
         setIsGeneratingImage(false)

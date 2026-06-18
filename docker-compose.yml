@@ -1,0 +1,17 @@
+services:
+  nexusai:
+    build: .
+    container_name: nexusai
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=file:/app/db/custom.db
+      - NODE_ENV=production
+    volumes:
+      - nexusai-db:/app/db
+      - nexusai-uploads:/app/public/uploads
+
+volumes:
+  nexusai-db:
+  nexusai-uploads:

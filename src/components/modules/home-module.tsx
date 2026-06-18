@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useRef, useMemo } from 'react'
 import type { Variants } from 'framer-motion'
 import { motion } from 'framer-motion'
 import {
@@ -21,7 +21,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { useWorkspaceStore, type ActivityItem } from '@/store/workspace-store'
+import { useWorkspaceStore, type ActivityItem, fetchStatsFromDB, fetchActivityFromDB, fetchAgentsFromDB } from '@/store/workspace-store'
 
 /* ─── Animation variants ─── */
 const container: Variants = {
@@ -154,28 +154,31 @@ function MiniSparkline({ color }: { color: string }) {
 
 /* ─── Stats section ─── */
 function StatsSection() {
-  const conversations = useWorkspaceStore((s) => s.conversations)
-  const generatedImages = useWorkspaceStore((s) => s.generatedImages)
+  const stats = useWorkspaceStore((s) => s.stats)
   const customAgents = useWorkspaceStore((s) => s.customAgents)
 
-  const stats = [
+  const totalConversations = stats?.totalConversations ?? useWorkspaceStore.getState().conversations.length
+  const totalImages = stats?.totalImages ?? useWorkspaceStore.getState().generatedImages.length
+  const totalAgents = stats?.totalAgents ?? customAgents.length
+
+  const statItems = [
     {
       label: 'Conversations',
-      value: conversations.length,
+      value: totalConversations,
       icon: MessageSquare,
       color: 'text-primary',
       sparkColor: 'text-primary',
     },
     {
       label: 'Images générées',
-      value: generatedImages.length,
+      value: totalImages,
       icon: ImageIcon,
       color: 'text-chart-4',
       sparkColor: 'text-chart-4',
     },
     {
       label: 'Agents actifs',
-      value: customAgents.filter((a) => a.isActive).length,
+      value: totalAgents,
       icon: Bot,
       color: 'text-chart-3',
       sparkColor: 'text-chart-3',
@@ -184,7 +187,7 @@ function StatsSection() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      {stats.map((stat) => (
+      {statItems.map((stat) => (
         <motion.div key={stat.label} variants={item}>
           <Card className="glass-subtle module-card overflow-hidden">
             <CardContent className="p-4 flex items-center gap-4">
@@ -208,7 +211,9 @@ function StatsSection() {
 
 /* ─── Recent Activity section ─── */
 function RecentActivitySection() {
-  const activities = useWorkspaceStore((s) => s.activities)
+  const dbActivities = useWorkspaceStore((s) => s.dbActivities)
+  const localActivities = useWorkspaceStore((s) => s.activities)
+  const activities = dbActivities.length > 0 ? dbActivities : localActivities
   const recent = activities.slice(0, 6)
 
   return (
@@ -300,7 +305,7 @@ function ActiveAgentsSection() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {activeAgents.map((agent) => (
+          {activeAgents.slice(0, 4).map((agent) => (
             <motion.div
               key={agent.id}
               initial={{ opacity: 0, scale: 0.95 }}
@@ -334,6 +339,25 @@ function ActiveAgentsSection() {
 /* ─── Main Home Module ─── */
 export default function HomeModule() {
   const setActiveModule = useWorkspaceStore((s) => s.setActiveModule)
+  const dataLoadedRef = useRef(false)
+
+  // Load stats, activities, and agents from DB on mount
+  useEffect(() => {
+    if (dataLoadedRef.current) return
+    dataLoadedRef.current = true
+    Promise.all([
+      fetchStatsFromDB(),
+      fetchActivityFromDB(),
+      fetchAgentsFromDB(),
+    ]).then(([stats, activities, { agents }]) => {
+      const store = useWorkspaceStore.getState()
+      if (stats) store.setStats(stats)
+      if (activities.length > 0) store.setDbActivities(activities)
+      if (agents.length > 0 && store.customAgents.length === 0) {
+        useWorkspaceStore.setState({ customAgents: agents })
+      }
+    })
+  }, [])
 
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto custom-scrollbar">

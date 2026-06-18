@@ -24,13 +24,14 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable'
-import { useWorkspaceStore, type Message } from '@/store/workspace-store'
+import { useWorkspaceStore, type Message, type Conversation, fetchConversationsFromDB } from '@/store/workspace-store'
 
 /* ─── Suggestion data ─── */
 const SUGGESTIONS = [
@@ -342,6 +343,7 @@ export default function ChatModule() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dbLoadedRef = useRef(false)
 
   // Store selectors
   const conversations = useWorkspaceStore((s) => s.conversations)
@@ -358,6 +360,17 @@ export default function ChatModule() {
     (c) => c.id === activeConversationId
   )
   const messages = activeConversation?.messages || []
+
+  // Load conversations from DB on mount
+  useEffect(() => {
+    if (dbLoadedRef.current) return
+    dbLoadedRef.current = true
+    fetchConversationsFromDB().then((dbConvs) => {
+      if (dbConvs.length > 0) {
+        useWorkspaceStore.setState({ conversations: dbConvs })
+      }
+    })
+  }, [])
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -376,13 +389,14 @@ export default function ChatModule() {
         convId = store.createConversation()
       }
 
-      // Add user message
-      store.addMessage(convId, {
+      // Add user message locally
+      const userMsg: Message = {
         id: `msg-${Date.now()}`,
         role: 'user',
         content: trimmed,
         createdAt: new Date(),
-      })
+      }
+      store.addMessage(convId, userMsg)
 
       // Update title from first message
       const conv = store.conversations.find((c) => c.id === convId)
@@ -406,7 +420,7 @@ export default function ChatModule() {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: messageHistory }),
+          body: JSON.stringify({ messages: messageHistory, conversationId: convId }),
         })
         const data = await res.json()
 
@@ -417,14 +431,21 @@ export default function ChatModule() {
             content: data.content,
             createdAt: new Date(),
           })
+        } else {
+          toast.error(data.error || 'Erreur lors de l\'envoi du message')
+          store.addMessage(convId, {
+            id: `msg-${Date.now()}-err`,
+            role: 'assistant',
+            content: 'Désolé, une erreur est survenue. Veuillez réessayer.',
+            createdAt: new Date(),
+          })
         }
       } catch {
-        // Error handling — add error message
+        toast.error('Impossible de se connecter au serveur')
         store.addMessage(convId, {
           id: `msg-${Date.now()}-err`,
           role: 'assistant',
-          content:
-            'Désolé, une erreur est survenue. Veuillez réessayer.',
+          content: 'Désolé, une erreur est survenue. Veuillez réessayer.',
           createdAt: new Date(),
         })
       } finally {
@@ -447,11 +468,55 @@ export default function ChatModule() {
   )
 
   // ─── New conversation ───
-  const handleNewConversation = useCallback(() => {
-    createConversation()
+  const handleNewConversation = useCallback(async () => {
+    try {
+      const res = await fetch('/api/chat', { method: 'PUT' })
+      const data = await res.json()
+      if (data.success && data.conversation) {
+        const dbConv = data.conversation
+        const conv: Conversation = {
+          id: dbConv.id,
+          title: dbConv.title || 'Nouvelle conversation',
+          model: dbConv.model || 'default',
+          messages: [],
+          createdAt: new Date(dbConv.createdAt),
+        }
+        const store = useWorkspaceStore.getState()
+        useWorkspaceStore.setState({
+          conversations: [conv, ...store.conversations],
+          activeConversationId: conv.id,
+          activeModule: 'chat',
+        })
+      } else {
+        // Fallback to local-only creation
+        createConversation()
+      }
+    } catch {
+      // Fallback to local-only creation
+      createConversation()
+    }
     setInput('')
     textareaRef.current?.focus()
   }, [createConversation])
+
+  // ─── Delete conversation ───
+  const handleDeleteConversation = useCallback(
+    async (id: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+      // Optimistic delete from store
+      deleteConversation(id)
+      try {
+        await fetch('/api/chat', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id }),
+        })
+      } catch {
+        toast.error('Impossible de supprimer la conversation')
+      }
+    },
+    [deleteConversation]
+  )
 
   // ─── Suggestion click ───
   const handleSuggestionClick = useCallback(
@@ -538,10 +603,7 @@ export default function ChatModule() {
 
                             {/* Delete button on hover */}
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteConversation(conv.id)
-                              }}
+                              onClick={(e) => handleDeleteConversation(conv.id, e)}
                               className="opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-destructive/10 hover:text-destructive transition-all"
                               aria-label="Supprimer la conversation"
                             >

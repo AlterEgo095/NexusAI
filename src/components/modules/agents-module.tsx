@@ -39,19 +39,37 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
-import { useWorkspaceStore, type CustomAgent } from '@/store/workspace-store'
+import { toast } from 'sonner'
+
+/* ─── Types ─── */
+interface Agent {
+  id: string
+  name: string
+  description: string
+  role: string
+  systemPrompt: string
+  tools: string[]
+  avatar: string
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+interface ToolDefinition {
+  value: string
+  label: string
+  description: string
+}
+
+interface ToolResult {
+  tool: string
+  success: boolean
+  data: string
+  durationMs: number
+}
 
 /* ─── Constants ─── */
 const AVATAR_OPTIONS = ['🤖', '💻', '🔬', '📊', '✍️', '🎨', '📈', '🛡️', '🔍', '📝']
-
-const TOOL_OPTIONS = [
-  { value: 'web_search', label: 'Recherche Web' },
-  { value: 'code_generation', label: 'Génération de Code' },
-  { value: 'writing', label: 'Rédaction' },
-  { value: 'data_analysis', label: 'Analyse de Données' },
-  { value: 'image_generation', label: 'Génération d\'Images' },
-  { value: 'editing', label: 'Édition' },
-]
 
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
   idle: { label: 'Inactif', className: 'idle' },
@@ -76,16 +94,40 @@ interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  toolResults?: ToolResult[]
 }
 
 /* ─── Main Component ─── */
 export default function AgentsModule() {
-  const customAgents = useWorkspaceStore((s) => s.customAgents)
-  const addAgent = useWorkspaceStore((s) => s.addAgent)
-  const deleteAgent = useWorkspaceStore((s) => s.deleteAgent)
-
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [toolDefinitions, setToolDefinitions] = useState<ToolDefinition[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [createOpen, setCreateOpen] = useState(false)
   const [chatAgentId, setChatAgentId] = useState<string | null>(null)
+
+  /* ─── Fetch agents on mount ─── */
+  useEffect(() => {
+    async function fetchAgents() {
+      try {
+        const res = await fetch('/api/agents')
+        const data = await res.json()
+        if (data.success) {
+          setAgents(
+            (data.agents || []).map((a: { tools: string; [key: string]: unknown }) => ({
+              ...a,
+              tools: typeof a.tools === 'string' ? JSON.parse(a.tools) : (a.tools || []),
+            }))
+          )
+          setToolDefinitions(data.toolDefinitions || [])
+        }
+      } catch {
+        toast.error('Erreur lors du chargement des agents')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchAgents()
+  }, [])
 
   /* ─── Create form state ─── */
   const [formName, setFormName] = useState('')
@@ -104,23 +146,38 @@ export default function AgentsModule() {
     setFormAvatar('🤖')
   }, [])
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback(async () => {
     if (!formName.trim() || !formPrompt.trim()) return
-    addAgent({
-      id: `agent-${Date.now()}`,
-      name: formName.trim(),
-      description: formDesc.trim() || 'Agent personnalisé',
-      role: formRole.trim() || 'Assistant',
-      systemPrompt: formPrompt.trim(),
-      tools: formTools,
-      avatar: formAvatar,
-      isActive: true,
-      status: 'idle',
-      createdAt: new Date(),
-    })
-    resetForm()
-    setCreateOpen(false)
-  }, [formName, formDesc, formRole, formPrompt, formTools, formAvatar, addAgent, resetForm])
+    try {
+      const res = await fetch('/api/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formName.trim(),
+          description: formDesc.trim() || undefined,
+          role: formRole.trim() || undefined,
+          systemPrompt: formPrompt.trim(),
+          tools: formTools.length > 0 ? JSON.stringify(formTools) : undefined,
+          avatar: formAvatar,
+        }),
+      })
+      const data = await res.json()
+      if (data.success && data.agent) {
+        const newAgent: Agent = {
+          ...data.agent,
+          tools: typeof data.agent.tools === 'string' ? JSON.parse(data.agent.tools) : (data.agent.tools || []),
+        }
+        setAgents((prev) => [newAgent, ...prev])
+        resetForm()
+        setCreateOpen(false)
+        toast.success(`Agent "${newAgent.name}" créé avec succès`)
+      } else {
+        toast.error(data.error || "Erreur lors de la création de l'agent")
+      }
+    } catch {
+      toast.error('Erreur de connexion au serveur')
+    }
+  }, [formName, formDesc, formRole, formPrompt, formTools, formAvatar, resetForm])
 
   const toggleTool = useCallback((tool: string) => {
     setFormTools((prev) =>
@@ -128,7 +185,22 @@ export default function AgentsModule() {
     )
   }, [])
 
-  const chatAgent = chatAgentId ? customAgents.find((a) => a.id === chatAgentId) : null
+  const handleDelete = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/agents/${id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setAgents((prev) => prev.filter((a) => a.id !== id))
+        toast.success('Agent supprimé')
+      } else {
+        toast.error(data.error || 'Erreur lors de la suppression')
+      }
+    } catch {
+      toast.error('Erreur de connexion au serveur')
+    }
+  }, [])
+
+  const chatAgent = chatAgentId ? agents.find((a) => a.id === chatAgentId) : null
 
   return (
     <div className="flex flex-col h-full">
@@ -233,11 +305,11 @@ export default function AgentsModule() {
                 />
               </div>
 
-              {/* Tools Multi-Select */}
+              {/* Tools Multi-Select — dynamic from API */}
               <div className="space-y-2">
                 <Label>Outils</Label>
                 <div className="flex flex-wrap gap-2">
-                  {TOOL_OPTIONS.map((tool) => (
+                  {toolDefinitions.map((tool) => (
                     <motion.button
                       key={tool.value}
                       type="button"
@@ -278,7 +350,16 @@ export default function AgentsModule() {
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-6 pb-4 md:pb-6">
         <AnimatePresence mode="wait">
-          {chatAgent ? (
+          {isLoading ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center justify-center py-20"
+            >
+              <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+            </motion.div>
+          ) : chatAgent ? (
             <AgentChatView
               key={`chat-${chatAgent.id}`}
               agent={chatAgent}
@@ -291,7 +372,7 @@ export default function AgentsModule() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              {customAgents.length === 0 ? (
+              {agents.length === 0 ? (
                 /* Empty State */
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -314,13 +395,13 @@ export default function AgentsModule() {
                 /* Agent Grid */
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <AnimatePresence>
-                    {customAgents.map((agent, i) => (
+                    {agents.map((agent, i) => (
                       <AgentCard
                         key={agent.id}
                         agent={agent}
                         index={i}
                         onChat={() => setChatAgentId(agent.id)}
-                        onDelete={() => deleteAgent(agent.id)}
+                        onDelete={() => handleDelete(agent.id)}
                       />
                     ))}
                   </AnimatePresence>
@@ -341,12 +422,12 @@ function AgentCard({
   onChat,
   onDelete,
 }: {
-  agent: CustomAgent
+  agent: Agent
   index: number
   onChat: () => void
   onDelete: () => void
 }) {
-  const statusInfo = STATUS_MAP[agent.status] || STATUS_MAP.idle
+  const statusInfo = agent.isActive ? STATUS_MAP.running : STATUS_MAP.idle
 
   return (
     <motion.div
@@ -453,7 +534,7 @@ function AgentChatView({
   agent,
   onClose,
 }: {
-  agent: CustomAgent
+  agent: Agent
   onClose: () => void
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -484,15 +565,13 @@ function AgentChatView({
     setIsSending(true)
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch('/api/agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMsg].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-          systemPrompt: agent.systemPrompt,
+          action: 'chat',
+          agentId: agent.id,
+          message: trimmed,
         }),
       })
       const data = await res.json()
@@ -500,11 +579,21 @@ function AgentChatView({
         const assistantMsg: ChatMessage = {
           id: `msg-${Date.now()}-resp`,
           role: 'assistant',
-          content: data.message || data.content || 'Réponse reçue.',
+          content: data.content || 'Réponse reçue.',
+          toolResults: data.toolResults || [],
         }
         setMessages((prev) => [...prev, assistantMsg])
+      } else {
+        toast.error(data.error || 'Erreur lors de la communication avec l\'agent')
+        const errorMsg: ChatMessage = {
+          id: `msg-${Date.now()}-err`,
+          role: 'assistant',
+          content: 'Désolé, une erreur est survenue. Veuillez réessayer.',
+        }
+        setMessages((prev) => [...prev, errorMsg])
       }
     } catch {
+      toast.error('Erreur de connexion au serveur')
       const errorMsg: ChatMessage = {
         id: `msg-${Date.now()}-err`,
         role: 'assistant',
@@ -514,7 +603,7 @@ function AgentChatView({
     } finally {
       setIsSending(false)
     }
-  }, [input, isSending, messages, agent.systemPrompt])
+  }, [input, isSending, agent.id])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -581,6 +670,18 @@ function AgentChatView({
                     : 'glass-subtle rounded-bl-md'
                 }`}
               >
+                {msg.role === 'assistant' && msg.toolResults && msg.toolResults.length > 0 && (
+                  <div className="mb-3 p-3 rounded-xl bg-primary/5 border border-primary/10">
+                    <p className="text-xs font-medium text-primary mb-2">🛠️ Outils exécutés ({msg.toolResults.length})</p>
+                    {msg.toolResults.map((tr, i) => (
+                      <div key={i} className="text-xs text-muted-foreground flex items-center gap-2 mb-1">
+                        <span className={`w-2 h-2 rounded-full ${tr.success ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                        <span className="font-medium">{tr.tool}</span>
+                        <span className="text-muted-foreground/60">{tr.durationMs}ms</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {msg.content}
               </div>
               {msg.role === 'user' && (

@@ -1,17 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
+import { db } from '@/lib/db'
+import { ensureDefaultUser, logActivity, incrementUsage } from '@/lib/ensure-user'
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const { query, num = 8 } = await request.json()
+    const { query, num = 8, filter = 'all' } = await request.json()
 
     if (!query || typeof query !== 'string') {
-      return NextResponse.json(
-        { success: false, error: 'Query is required' },
-        { status: 400 }
-      )
+      return NextResponse.json({ success: false, error: 'Query is required' }, { status: 400 })
     }
 
+    const user = await ensureDefaultUser()
     const zai = await ZAI.create()
 
     // Perform web search
@@ -21,19 +21,16 @@ export async function POST(request: Request) {
     })
 
     if (!searchResults || !Array.isArray(searchResults)) {
-      return NextResponse.json({
-        success: true,
-        results: [],
-        summary: '',
-      })
+      await logActivity('search', 'Recherche effectuée', query)
+      await incrementUsage('searchRequests')
+      return NextResponse.json({ success: true, results: [], summary: '' })
     }
 
     // Build AI summary from top results
     const topResults = searchResults.slice(0, 5)
     const searchContext = topResults
-      .map(
-        (r, i) =>
-          `[${i + 1}] ${r.name}\n   ${r.snippet}\n   Source: ${r.url}`
+      .map((r: { name?: string; snippet?: string; url?: string }, i: number) =>
+        `[${i + 1}] ${r.name}\n   ${r.snippet}\n   Source: ${r.url}`
       )
       .join('\n\n')
 
@@ -42,9 +39,8 @@ export async function POST(request: Request) {
       const completion = await zai.chat.completions.create({
         messages: [
           {
-            role: 'assistant',
-            content:
-              'Tu es un assistant de recherche IA. Résume les résultats de recherche de manière claire, concise et informative en français. Utilise des références numérotées [1], [2], etc. pour citer les sources. Fais des paragraphes courts et bien structurés.',
+            role: 'system',
+            content: 'Tu es un assistant de recherche IA. Résume les résultats de recherche de manière claire, concise et informative en français. Utilise des références numérotées [1], [2], etc. pour citer les sources. Fais des paragraphes courts et bien structurés.',
           },
           {
             role: 'user',
@@ -53,36 +49,55 @@ export async function POST(request: Request) {
         ],
         thinking: { type: 'disabled' },
       })
-
-      summary =
-        completion.choices?.[0]?.message?.content || ''
+      summary = completion.choices?.[0]?.message?.content || ''
     } catch {
-      // Fallback if summary generation fails
-      summary =
-        `Voici les résultats pour "${query}". Consultez les sources ci-dessous pour plus d'informations.`
+      summary = `Voici les résultats pour "${query}". Consultez les sources ci-dessous pour plus d'informations.`
     }
 
     // Map search results to our interface
-    const results = searchResults.map((item) => ({
-      url: item.url || '',
-      name: item.name || '',
-      snippet: item.snippet || '',
-      host_name: item.host_name || '',
-      rank: item.rank || 0,
-      date: item.date || '',
-      favicon: item.favicon || '',
+    const results = (searchResults as Record<string, unknown>[]).map((item) => ({
+      url: String(item.url || ''),
+      name: String(item.name || ''),
+      snippet: String(item.snippet || ''),
+      host_name: String(item.host_name || ''),
+      rank: Number(item.rank || 0),
+      date: String(item.date || ''),
+      favicon: String(item.favicon || ''),
     }))
 
-    return NextResponse.json({
-      success: true,
-      results,
-      summary,
+    // Save to search history
+    await db.searchHistory.create({
+      data: {
+        userId: user.id,
+        query,
+        results: JSON.stringify(results.slice(0, 5)),
+        summary,
+        filter,
+        resultCount: results.length,
+      },
     })
+
+    await logActivity('search', 'Recherche effectuée', query, { resultCount: results.length })
+    await incrementUsage('searchRequests')
+
+    return NextResponse.json({ success: true, results, summary })
   } catch (error) {
     console.error('Search API error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+export async function GET() {
+  try {
+    const user = await ensureDefaultUser()
+    const history = await db.searchHistory.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+    return NextResponse.json({ success: true, history })
+  } catch (error) {
+    console.error('Search history fetch error:', error)
+    return NextResponse.json({ success: false, error: 'Failed to fetch history' }, { status: 500 })
   }
 }

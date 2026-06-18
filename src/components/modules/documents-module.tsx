@@ -52,8 +52,8 @@ interface Document {
   content: string
   type: DocumentType
   status: DocumentStatus
-  createdAt: Date
-  updatedAt: Date
+  createdAt: string
+  updatedAt: string
 }
 
 /* ─── Templates ─── */
@@ -367,7 +367,8 @@ npm install
 ]
 
 /* ─── Relative time helper ─── */
-function relativeTime(date: Date): string {
+function relativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
   const now = new Date()
   const diff = now.getTime() - date.getTime()
   const seconds = Math.floor(diff / 1000)
@@ -596,11 +597,13 @@ function AIGenerationDialog({
 export default function DocumentsModule() {
   /* Document state */
   const [documents, setDocuments] = useState<Document[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [activeDocId, setActiveDocId] = useState<string | null>(null)
   const [editorContent, setEditorContent] = useState('')
   const [editorTitle, setEditorTitle] = useState('')
   const [editorType, setEditorType] = useState<DocumentType>('markdown')
   const [editorStatus, setEditorStatus] = useState<DocumentStatus>('brouillon')
+  const [isSaving, setIsSaving] = useState(false)
 
   /* Editor UI state */
   const [editorTab, setEditorTab] = useState<'editor' | 'preview' | 'split'>('split')
@@ -609,6 +612,25 @@ export default function DocumentsModule() {
 
   /* Refs */
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /* Fetch documents on mount */
+  useEffect(() => {
+    async function fetchDocuments() {
+      try {
+        const res = await fetch('/api/documents')
+        const data = await res.json()
+        if (data.success) {
+          setDocuments(data.documents || [])
+        }
+      } catch {
+        toast.error('Erreur lors du chargement des documents')
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchDocuments()
+  }, [])
 
   /* Auto-resize textarea */
   useEffect(() => {
@@ -624,24 +646,39 @@ export default function DocumentsModule() {
 
   /* ─── Document CRUD ─── */
   const createDocument = useCallback(
-    (title: string, type: DocumentType, content: string) => {
-      const now = new Date()
-      const doc: Document = {
-        id: `doc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        title,
-        content,
-        type,
-        status: 'brouillon',
-        createdAt: now,
-        updatedAt: now,
+    async (title: string, type: DocumentType, content: string) => {
+      try {
+        const res = await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title, type, content }),
+        })
+        const data = await res.json()
+        if (data.success && data.document) {
+          const doc: Document = {
+            id: data.document.id,
+            title: data.document.title,
+            content: data.document.content || '',
+            type: (data.document.type || 'markdown') as DocumentType,
+            status: (data.document.status || 'brouillon') as DocumentStatus,
+            createdAt: data.document.createdAt,
+            updatedAt: data.document.updatedAt,
+          }
+          setDocuments((prev) => [doc, ...prev])
+          setActiveDocId(doc.id)
+          setEditorTitle(doc.title)
+          setEditorContent(doc.content)
+          setEditorType(doc.type)
+          setEditorStatus(doc.status)
+          return doc.id
+        } else {
+          toast.error(data.error || 'Erreur lors de la création du document')
+          return null
+        }
+      } catch {
+        toast.error('Erreur de connexion au serveur')
+        return null
       }
-      setDocuments((prev) => [doc, ...prev])
-      setActiveDocId(doc.id)
-      setEditorTitle(doc.title)
-      setEditorContent(doc.content)
-      setEditorType(doc.type)
-      setEditorStatus(doc.status)
-      return doc.id
     },
     []
   )
@@ -659,26 +696,62 @@ export default function DocumentsModule() {
     [documents]
   )
 
-  const saveCurrentDocument = useCallback(() => {
+  const saveCurrentDocument = useCallback(async () => {
     if (!activeDocId) return
-    setDocuments((prev) =>
-      prev.map((d) =>
-        d.id === activeDocId
-          ? { ...d, title: editorTitle, content: editorContent, type: editorType, status: editorStatus, updatedAt: new Date() }
-          : d
-      )
-    )
-  }, [activeDocId, editorTitle, editorContent, editorType, editorStatus])
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/documents/${activeDocId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editorTitle,
+          content: editorContent,
+          status: editorStatus,
+        }),
+      })
+      const data = await res.json()
+      if (data.success && data.document) {
+        setDocuments((prev) =>
+          prev.map((d) =>
+            d.id === activeDocId
+              ? {
+                  ...d,
+                  title: data.document.title,
+                  content: data.document.content,
+                  type: data.document.type,
+                  status: data.document.status,
+                  updatedAt: data.document.updatedAt,
+                }
+              : d
+          )
+        )
+      }
+    } catch {
+      // Silent save failure
+    } finally {
+      setIsSaving(false)
+    }
+  }, [activeDocId, editorTitle, editorContent, editorStatus])
 
   const deleteDocument = useCallback(
-    (id: string) => {
-      setDocuments((prev) => prev.filter((d) => d.id !== id))
-      if (activeDocId === id) {
-        setActiveDocId(null)
-        setEditorTitle('')
-        setEditorContent('')
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' })
+        const data = await res.json()
+        if (data.success) {
+          setDocuments((prev) => prev.filter((d) => d.id !== id))
+          if (activeDocId === id) {
+            setActiveDocId(null)
+            setEditorTitle('')
+            setEditorContent('')
+          }
+          toast.success('Document supprimé')
+        } else {
+          toast.error(data.error || 'Erreur lors de la suppression')
+        }
+      } catch {
+        toast.error('Erreur de connexion au serveur')
       }
-      toast.success('Document supprimé')
     },
     [activeDocId]
   )
@@ -686,8 +759,11 @@ export default function DocumentsModule() {
   /* Auto-save on changes */
   useEffect(() => {
     if (activeDocId) {
-      const timer = setTimeout(saveCurrentDocument, 800)
-      return () => clearTimeout(timer)
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(saveCurrentDocument, 800)
+      return () => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      }
     }
   }, [editorTitle, editorContent, editorType, editorStatus, activeDocId, saveCurrentDocument])
 
@@ -702,37 +778,48 @@ export default function DocumentsModule() {
         long: 'environ 1000-1500 mots',
       }
 
-      const typeInstruction: Record<DocumentType, string> = {
-        markdown: 'Utilise le format Markdown avec titres, listes, tableaux si pertinent.',
-        html: 'Utilise du HTML sémantique avec des balises appropriées (h1, h2, p, ul, etc.).',
-        text: 'Rédige en texte brut bien structuré.',
-      }
-
-      const systemPrompt = `Tu es un expert en rédaction professionnelle. Tu génères des documents de haute qualité.
-Ton : ${tone}.
-Longueur souhaitée : ${lengthMap[length]}.
-${typeInstruction[type]}
-
-Génère UNIQUEMENT le contenu du document, sans commentaires ou explications supplémentaires.
-Commence directement par le contenu.`
+      const aiPrompt = `${prompt}\n\nTon souhaité : ${tone}. Longueur souhaitée : ${lengthMap[length]}. Format : ${type}.`
 
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch('/api/documents', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            messages: [{ role: 'user', content: prompt }],
-            systemPrompt,
+            title: editorTitle || 'Document IA',
+            type,
+            generateWithAI: true,
+            aiPrompt,
           }),
         })
 
         const data = await response.json()
 
-        if (data.success && data.content) {
-          setEditorContent((prev) => {
-            const separator = prev.trim() ? '\n\n---\n\n' : ''
-            return prev + separator + data.content
-          })
+        if (data.success && data.document) {
+          const generatedContent = data.document.content || ''
+          if (activeDocId) {
+            /* Append to current doc if one is open */
+            setEditorContent((prev) => {
+              const separator = prev.trim() ? '\n\n---\n\n' : ''
+              return prev + separator + generatedContent
+            })
+          } else {
+            /* Create new document with generated content */
+            const doc: Document = {
+              id: data.document.id,
+              title: data.document.title,
+              content: generatedContent,
+              type: (data.document.type || 'markdown') as DocumentType,
+              status: (data.document.status || 'brouillon') as DocumentStatus,
+              createdAt: data.document.createdAt,
+              updatedAt: data.document.updatedAt,
+            }
+            setDocuments((prev) => [doc, ...prev])
+            setActiveDocId(doc.id)
+            setEditorTitle(doc.title)
+            setEditorContent(doc.content)
+            setEditorType(doc.type)
+            setEditorStatus(doc.status)
+          }
           toast.success('Document généré avec succès')
           setAiDialogOpen(false)
         } else {
@@ -744,7 +831,7 @@ Commence directement par le contenu.`
         setIsGenerating(false)
       }
     },
-    []
+    [activeDocId, editorTitle]
   )
 
   /* ─── Download ─── */
@@ -789,9 +876,9 @@ Commence directement par le contenu.`
 
   /* ─── Back to list ─── */
   const handleBack = useCallback(() => {
-    saveCurrentDocument()
+    if (activeDocId) saveCurrentDocument()
     setActiveDocId(null)
-  }, [saveCurrentDocument])
+  }, [activeDocId, saveCurrentDocument])
 
   /* ─── Render: Editor View ─── */
   if (activeDocId) {
@@ -822,6 +909,10 @@ Commence directement par le contenu.`
                 className="h-8 max-w-xs border-0 bg-transparent text-base font-semibold focus-visible:ring-0 focus-visible:ring-offset-0"
                 placeholder="Titre du document..."
               />
+
+              {isSaving && (
+                <span className="text-[10px] text-muted-foreground animate-pulse">Sauvegarde...</span>
+              )}
 
               <div className="ml-auto flex items-center gap-2">
                 <Select
@@ -986,7 +1077,16 @@ Commence directement par le contenu.`
       </div>
 
       <AnimatePresence mode="wait">
-        {documents.length === 0 ? (
+        {isLoading ? (
+          <motion.div
+            key="loading"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex items-center justify-center flex-1"
+          >
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+          </motion.div>
+        ) : documents.length === 0 ? (
           /* ─── Welcome State ─── */
           <motion.div
             key="welcome"

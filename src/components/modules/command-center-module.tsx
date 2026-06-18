@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useRef, useMemo, useCallback } from 'react'
 import type { Variants } from 'framer-motion'
 import { motion } from 'framer-motion'
 import {
@@ -30,7 +30,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Separator } from '@/components/ui/separator'
-import { useWorkspaceStore, type ActivityItem } from '@/store/workspace-store'
+import { useWorkspaceStore, type ActivityItem, fetchStatsFromDB, fetchActivityFromDB, fetchAgentsFromDB } from '@/store/workspace-store'
 
 /* ─── Animation variants ─── */
 const container: Variants = {
@@ -120,14 +120,21 @@ function MiniSparkline({ color, trend = 'up' }: { color: string; trend?: 'up' | 
 
 /* ─── Stats Cards ─── */
 function StatsCards() {
+  const stats = useWorkspaceStore((s) => s.stats)
   const customAgents = useWorkspaceStore((s) => s.customAgents)
-  const activeAgentCount = customAgents.filter((a) => a.isActive).length
 
-  const stats = [
+  const todayRequests = stats
+    ? stats.today.chatRequests + stats.today.searchRequests + stats.today.imageRequests + stats.today.agentRequests
+    : 0
+  const totalAgents = stats?.totalAgents ?? customAgents.length
+  const tokensUsed = stats?.today.tokensUsed ?? 0
+  const creditsRemaining = stats?.creditsRemaining ?? 0
+
+  const statCards = [
     {
       title: 'Requêtes IA',
-      value: '1,247',
-      subtitle: '+12% cette semaine',
+      value: todayRequests.toLocaleString('fr-FR'),
+      subtitle: "Aujourd'hui",
       trend: 'up' as const,
       icon: Activity,
       color: 'text-primary',
@@ -136,18 +143,18 @@ function StatsCards() {
     },
     {
       title: 'Coûts IA',
-      value: '$23.50',
-      subtitle: 'Budget: $100',
+      value: `${tokensUsed.toLocaleString('fr-FR')} tokens`,
+      subtitle: `Crédits: ${creditsRemaining.toLocaleString('fr-FR')}`,
       trend: 'up' as const,
       icon: DollarSign,
       color: 'text-chart-2',
       bg: 'bg-chart-2/10',
       sparkColor: 'text-chart-2',
-      progress: 23.5,
+      progress: creditsRemaining > 0 ? Math.min(((10000 - creditsRemaining) / 10000) * 100, 100) : 0,
     },
     {
       title: 'Agents Actifs',
-      value: String(activeAgentCount),
+      value: String(totalAgents),
       subtitle: `sur ${customAgents.length} agents`,
       trend: 'up' as const,
       icon: Bot,
@@ -158,7 +165,7 @@ function StatsCards() {
     {
       title: 'Uptime',
       value: '99.8%',
-      subtitle: 'Dernière panne: 3j',
+      subtitle: 'Approximation',
       trend: 'up' as const,
       icon: Clock,
       color: 'text-emerald-500',
@@ -169,7 +176,7 @@ function StatsCards() {
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      {stats.map((stat) => (
+      {statCards.map((stat) => (
         <motion.div key={stat.title} variants={item}>
           <Card className="glass-subtle module-card overflow-hidden">
             <CardContent className="p-4 space-y-3">
@@ -207,7 +214,9 @@ function StatsCards() {
 
 /* ─── Activity Log ─── */
 function ActivityLog() {
-  const activities = useWorkspaceStore((s) => s.activities)
+  const dbActivities = useWorkspaceStore((s) => s.dbActivities)
+  const localActivities = useWorkspaceStore((s) => s.activities)
+  const activities = dbActivities.length > 0 ? dbActivities : localActivities
 
   return (
     <motion.div variants={item} className="space-y-3">
@@ -234,7 +243,7 @@ function ActivityLog() {
         ) : (
           <div className="max-h-96 overflow-y-auto custom-scrollbar">
             <div className="divide-y divide-border/50">
-              {activities.map((activity, idx) => {
+              {activities.slice(0, 50).map((activity) => {
                 const meta = getActivityMeta(activity.type)
                 const Icon = meta.icon
                 return (
@@ -268,12 +277,12 @@ function AgentStatusSection() {
   const customAgents = useWorkspaceStore((s) => s.customAgents)
   const updateAgent = useWorkspaceStore((s) => s.updateAgent)
 
-  const toggleAgent = (agentId: string, currentActive: boolean) => {
+  const toggleAgent = useCallback((agentId: string, currentActive: boolean) => {
     updateAgent(agentId, {
       isActive: !currentActive,
       status: currentActive ? 'idle' : 'idle',
     })
-  }
+  }, [updateAgent])
 
   return (
     <motion.div variants={item} className="space-y-3">
@@ -284,60 +293,74 @@ function AgentStatusSection() {
         </Badge>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {customAgents.map((agent) => (
-          <Card key={agent.id} className="glass-subtle module-card">
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start gap-3">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-muted/50 text-xl flex-shrink-0">
-                  {agent.avatar}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold truncate">{agent.name}</p>
-                    <span className={`status-dot ${agent.status}`} title={agent.status} />
+      {customAgents.length === 0 ? (
+        <Card className="glass-subtle">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="flex size-14 items-center justify-center rounded-full bg-muted/50 mb-3">
+              <Bot className="size-7 text-muted-foreground/40" />
+            </div>
+            <p className="text-muted-foreground text-sm font-medium">Aucun agent configuré</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">
+              Les agents apparaîtront ici une fois chargés
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {customAgents.slice(0, 6).map((agent) => (
+            <Card key={agent.id} className="glass-subtle module-card">
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-muted/50 text-xl flex-shrink-0">
+                    {agent.avatar}
                   </div>
-                  <p className="text-xs text-muted-foreground">{agent.role}</p>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold truncate">{agent.name}</p>
+                      <span className={`status-dot ${agent.status}`} title={agent.status} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">{agent.role}</p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="flex flex-wrap gap-1">
-                {agent.tools.map((tool) => (
-                  <Badge key={tool} variant="outline" className="text-[10px] font-normal px-1.5 py-0">
-                    {tool}
-                  </Badge>
-                ))}
-              </div>
+                <div className="flex flex-wrap gap-1">
+                  {agent.tools.map((tool) => (
+                    <Badge key={tool} variant="outline" className="text-[10px] font-normal px-1.5 py-0">
+                      {tool}
+                    </Badge>
+                  ))}
+                </div>
 
-              <Separator className="opacity-50" />
+                <Separator className="opacity-50" />
 
-              <div className="flex items-center justify-between">
-                <span className={`text-xs font-medium ${agent.isActive ? 'text-emerald-500' : 'text-muted-foreground'}`}>
-                  {agent.isActive ? 'Actif' : 'Inactif'}
-                </span>
-                <Button
-                  size="sm"
-                  variant={agent.isActive ? 'outline' : 'default'}
-                  className="h-7 text-xs gap-1.5 px-3"
-                  onClick={() => toggleAgent(agent.id, agent.isActive)}
-                >
-                  {agent.isActive ? (
-                    <>
-                      <Square className="size-3" />
-                      Arrêter
-                    </>
-                  ) : (
-                    <>
-                      <Play className="size-3" />
-                      Démarrer
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+                <div className="flex items-center justify-between">
+                  <span className={`text-xs font-medium ${agent.isActive ? 'text-emerald-500' : 'text-muted-foreground'}`}>
+                    {agent.isActive ? 'Actif' : 'Inactif'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant={agent.isActive ? 'outline' : 'default'}
+                    className="h-7 text-xs gap-1.5 px-3"
+                    onClick={() => toggleAgent(agent.id, agent.isActive)}
+                  >
+                    {agent.isActive ? (
+                      <>
+                        <Square className="size-3" />
+                        Arrêter
+                      </>
+                    ) : (
+                      <>
+                        <Play className="size-3" />
+                        Démarrer
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -354,7 +377,7 @@ function SystemResources() {
     <motion.div variants={item} className="space-y-3">
       <h3 className="text-lg font-semibold tracking-tight flex items-center gap-2">
         <Cpu className="size-4 text-muted-foreground" />
-        Ressources système
+        Ressources système <span className="text-xs text-muted-foreground/50 font-normal">(Approximation)</span>
       </h3>
 
       <Card className="glass-subtle">
@@ -386,8 +409,23 @@ function SystemResources() {
 
 /* ─── API Usage Bar Chart ─── */
 function ApiUsageChart() {
+  const stats = useWorkspaceStore((s) => s.stats)
+
   const days = useMemo(() => {
     const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam']
+
+    // Use real weekly trend data if available
+    if (stats?.weeklyTrend && stats.weeklyTrend.length > 0) {
+      return stats.weeklyTrend.map((d) => {
+        const dateObj = new Date(d.date + 'T00:00:00')
+        return {
+          label: dayNames[dateObj.getDay()],
+          value: d.chatRequests + d.searchRequests + d.imageRequests + d.agentRequests,
+        }
+      })
+    }
+
+    // Fallback: generate 7 days of data
     const data: { label: string; value: number }[] = []
     const today = new Date()
     for (let i = 6; i >= 0; i--) {
@@ -399,9 +437,9 @@ function ApiUsageChart() {
       })
     }
     return data
-  }, [])
+  }, [stats])
 
-  const maxVal = Math.max(...days.map((d) => d.value))
+  const maxVal = Math.max(...days.map((d) => d.value), 1)
 
   return (
     <motion.div variants={item} className="space-y-3">
@@ -446,6 +484,26 @@ function ApiUsageChart() {
 
 /* ─── Main Command Center Module ─── */
 export default function CommandCenterModule() {
+  const dataLoadedRef = useRef(false)
+
+  // Load stats, activities, and agents from DB on mount
+  useEffect(() => {
+    if (dataLoadedRef.current) return
+    dataLoadedRef.current = true
+    Promise.all([
+      fetchStatsFromDB(),
+      fetchActivityFromDB(),
+      fetchAgentsFromDB(),
+    ]).then(([stats, activities, { agents }]) => {
+      const store = useWorkspaceStore.getState()
+      if (stats) store.setStats(stats)
+      if (activities.length > 0) store.setDbActivities(activities)
+      if (agents.length > 0 && store.customAgents.length === 0) {
+        useWorkspaceStore.setState({ customAgents: agents })
+      }
+    })
+  }, [])
+
   return (
     <div className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto custom-scrollbar">
       <motion.div
