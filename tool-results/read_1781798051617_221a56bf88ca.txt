@@ -1,0 +1,909 @@
+     1→'use client'
+     2→
+     3→import { useState, useCallback, useRef, useEffect } from 'react'
+     4→import { motion, AnimatePresence } from 'framer-motion'
+     5→import {
+     6→  Workflow,
+     7→  Plus,
+     8→  ArrowLeft,
+     9→  Trash2,
+    10→  Search,
+    11→  FileText,
+    12→  Bell,
+    13→  Zap,
+    14→  ArrowRight,
+    15→  GitBranch,
+    16→  FileOutput,
+    17→  GripVertical,
+    18→  Save,
+    19→  MousePointer,
+    20→  Play,
+    21→  Clock,
+    22→} from 'lucide-react'
+    23→import { Button } from '@/components/ui/button'
+    24→import { Card } from '@/components/ui/card'
+    25→import { Badge } from '@/components/ui/badge'
+    26→import { Input } from '@/components/ui/input'
+    27→import { Label } from '@/components/ui/label'
+    28→import { Switch } from '@/components/ui/switch'
+    29→import { Separator } from '@/components/ui/separator'
+    30→import {
+    31→  Dialog,
+    32→  DialogContent,
+    33→  DialogHeader,
+    34→  DialogTitle,
+    35→  DialogTrigger,
+    36→  DialogFooter,
+    37→  DialogClose,
+    38→} from '@/components/ui/dialog'
+    39→import {
+    40→  AlertDialog,
+    41→  AlertDialogAction,
+    42→  AlertDialogCancel,
+    43→  AlertDialogContent,
+    44→  AlertDialogDescription,
+    45→  AlertDialogFooter,
+    46→  AlertDialogHeader,
+    47→  AlertDialogTitle,
+    48→  AlertDialogTrigger,
+    49→} from '@/components/ui/alert-dialog'
+    50→import { useWorkspaceStore, type Workflow as WorkflowType, type WorkflowNode } from '@/store/workspace-store'
+    51→
+    52→/* ─── Constants ─── */
+    53→const TEMPLATES = [
+    54→  {
+    55→    name: 'Surveillance Web',
+    56→    description: 'Recherche automatique et notification',
+    57→    icon: Search,
+    58→    trigger: 'Planifié',
+    59→    nodes: [
+    60→      { type: 'trigger' as const, label: 'Déclencheur Planifié', config: { interval: '1h' }, position: { x: 80, y: 120 } },
+    61→      { type: 'action' as const, label: 'Recherche Web', config: { query: 'IA et technologie' }, position: { x: 350, y: 120 } },
+    62→      { type: 'condition' as const, label: 'Nouveaux Résultats ?', config: { field: 'count', operator: '>', value: 0 }, position: { x: 620, y: 120 } },
+    63→      { type: 'output' as const, label: 'Envoyer Notification', config: { channel: 'email' }, position: { x: 890, y: 120 } },
+    64→    ],
+    65→  },
+    66→  {
+    67→    name: 'Rapport Hebdomadaire',
+    68→    description: 'Génération automatique de rapports',
+    69→    icon: FileText,
+    70→    trigger: 'Planifié',
+    71→    nodes: [
+    72→      { type: 'trigger' as const, label: 'Chaque Lundi', config: { cron: '0 9 * * 1' }, position: { x: 80, y: 120 } },
+    73→      { type: 'action' as const, label: 'Collecter Données', config: { source: 'analytics' }, position: { x: 350, y: 120 } },
+    74→      { type: 'action' as const, label: 'Générer Rapport', config: { format: 'pdf' }, position: { x: 620, y: 120 } },
+    75→      { type: 'output' as const, label: 'Partager Rapport', config: { to: 'team@company.com' }, position: { x: 890, y: 120 } },
+    76→    ],
+    77→  },
+    78→  {
+    79→    name: 'Agent de Veille',
+    80→    description: 'Veille technologique automatisée',
+    81→    icon: Bell,
+    82→    trigger: 'Webhook',
+    83→    nodes: [
+    84→      { type: 'trigger' as const, label: 'Webhook Entrant', config: { url: '/api/webhook' }, position: { x: 80, y: 120 } },
+    85→      { type: 'action' as const, label: 'Analyser Contenu', config: { model: 'gpt-4' }, position: { x: 350, y: 120 } },
+    86→      { type: 'condition' as const, label: 'Pertinent ?', config: { threshold: 0.8 }, position: { x: 620, y: 80 } },
+    87→      { type: 'output' as const, label: 'Sauvegarder', config: { db: 'veilles' }, position: { x: 890, y: 120 } },
+    88→      { type: 'output' as const, label: 'Notifier', config: { slack: '#veille' }, position: { x: 620, y: 200 } },
+    89→    ],
+    90→  },
+    91→]
+    92→
+    93→const NODE_TYPE_CONFIG: Record<string, { icon: typeof Zap; color: string; bg: string; label: string }> = {
+    94→  trigger: { icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', label: 'Déclencheur' },
+    95→  action: { icon: ArrowRight, color: 'text-emerald-500', bg: 'bg-emerald-500/10', label: 'Action' },
+    96→  condition: { icon: GitBranch, color: 'text-violet-500', bg: 'bg-violet-500/10', label: 'Condition' },
+    97→  output: { icon: FileOutput, color: 'text-sky-500', bg: 'bg-sky-500/10', label: 'Sortie' },
+    98→}
+    99→
+   100→const ADDABLE_NODE_TYPES: { type: WorkflowNode['type']; label: string }[] = [
+   101→  { type: 'trigger', label: 'Déclencheur' },
+   102→  { type: 'action', label: 'Action' },
+   103→  { type: 'condition', label: 'Condition' },
+   104→  { type: 'output', label: 'Sortie' },
+   105→]
+   106→
+   107→/* ─── Helpers ─── */
+   108→function relativeTime(date: Date | null): string {
+   109→  if (!date) return 'Jamais'
+   110→  const now = new Date()
+   111→  const diff = now.getTime() - date.getTime()
+   112→  const minutes = Math.floor(diff / 60000)
+   113→  const hours = Math.floor(minutes / 60)
+   114→  const days = Math.floor(hours / 24)
+   115→  if (minutes < 1) return "À l'instant"
+   116→  if (minutes < 60) return `Il y a ${minutes} min`
+   117→  if (hours < 24) return `Il y a ${hours}h`
+   118→  if (days < 7) return `Il y a ${days}j`
+   119→  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+   120→}
+   121→
+   122→/* ─── Animation variants ─── */
+   123→const cardVariants = {
+   124→  hidden: { opacity: 0, y: 20, scale: 0.95 },
+   125→  visible: (i: number) => ({
+   126→    opacity: 1,
+   127→    y: 0,
+   128→    scale: 1,
+   129→    transition: { delay: i * 0.06, type: 'spring' as const, stiffness: 200, damping: 20 },
+   130→  }),
+   131→  exit: { opacity: 0, y: -10, scale: 0.95, transition: { duration: 0.2 } },
+   132→}
+   133→
+   134→/* ─── Main Component ─── */
+   135→export default function AutomationModule() {
+   136→  const workflows = useWorkspaceStore((s) => s.workflows)
+   137→  const addWorkflow = useWorkspaceStore((s) => s.addWorkflow)
+   138→  const updateWorkflow = useWorkspaceStore((s) => s.updateWorkflow)
+   139→
+   140→  const [selectedId, setSelectedId] = useState<string | null>(null)
+   141→  const [createOpen, setCreateOpen] = useState(false)
+   142→  const [newName, setNewName] = useState('')
+   143→
+   144→  const selectedWorkflow = selectedId ? workflows.find((w) => w.id === selectedId) : null
+   145→
+   146→  const handleCreateFromTemplate = useCallback(
+   147→    (template: (typeof TEMPLATES)[number]) => {
+   148→      const id = `wf-${Date.now()}`
+   149→      addWorkflow({
+   150→        id,
+   151→        name: template.name,
+   152→        trigger: template.trigger,
+   153→        nodes: template.nodes.map((n, i) => ({
+   154→          ...n,
+   155→          id: `node-${id}-${i}`,
+   156→        })),
+   157→        isActive: false,
+   158→        lastRun: null,
+   159→      })
+   160→      setSelectedId(id)
+   161→    },
+   162→    [addWorkflow]
+   163→  )
+   164→
+   165→  const handleCreateBlank = useCallback(() => {
+   166→    if (!newName.trim()) return
+   167→    const id = `wf-${Date.now()}`
+   168→    addWorkflow({
+   169→      id,
+   170→      name: newName.trim(),
+   171→      trigger: 'Manuel',
+   172→      nodes: [
+   173→        {
+   174→          id: `node-${id}-0`,
+   175→          type: 'trigger',
+   176→          label: 'Déclencheur Manuel',
+   177→          config: { type: 'manual' },
+   178→          position: { x: 100, y: 200 },
+   179→        },
+   180→        {
+   181→          id: `node-${id}-1`,
+   182→          type: 'action',
+   183→          label: 'Nouvelle Action',
+   184→          config: {},
+   185→          position: { x: 400, y: 200 },
+   186→        },
+   187→      ],
+   188→      isActive: false,
+   189→      lastRun: null,
+   190→    })
+   191→    setNewName('')
+   192→    setCreateOpen(false)
+   193→    setSelectedId(id)
+   194→  }, [newName, addWorkflow])
+   195→
+   196→  return (
+   197→    <div className="flex flex-col h-full">
+   198→      {/* Header */}
+   199→      <div className="p-4 md:p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+   200→        <div className="flex items-center gap-3">
+   201→          <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+   202→            <Workflow className="w-5 h-5 text-primary" />
+   203→          </div>
+   204→          <div>
+   205→            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Automatisation</h1>
+   206→            <p className="text-sm text-muted-foreground">Créez des workflows intelligents</p>
+   207→          </div>
+   208→        </div>
+   209→
+   210→        {!selectedWorkflow && (
+   211→          <div className="flex items-center gap-2">
+   212→            <Dialog open={createOpen} onOpenChange={(open) => { setCreateOpen(open); if (!open) setNewName('') }}>
+   213→              <DialogTrigger asChild>
+   214→                <Button className="gap-2 rounded-xl">
+   215→                  <Plus className="w-4 h-4" />
+   216→                  Nouveau Workflow
+   217→                </Button>
+   218→              </DialogTrigger>
+   219→              <DialogContent className="glass-subtle max-w-md">
+   220→                <DialogHeader>
+   221→                  <DialogTitle className="flex items-center gap-2">
+   222→                    <Workflow className="w-5 h-5 text-primary" />
+   223→                    Nouveau Workflow
+   224→                  </DialogTitle>
+   225→                </DialogHeader>
+   226→                <div className="space-y-4 py-2">
+   227→                  <div className="space-y-2">
+   228→                    <Label htmlFor="wf-name">Nom du workflow</Label>
+   229→                    <Input
+   230→                      id="wf-name"
+   231→                      placeholder="Mon Workflow"
+   232→                      value={newName}
+   233→                      onChange={(e) => setNewName(e.target.value)}
+   234→                      className="input-glow"
+   235→                      onKeyDown={(e) => { if (e.key === 'Enter') handleCreateBlank() }}
+   236→                    />
+   237→                  </div>
+   238→                </div>
+   239→                <DialogFooter>
+   240→                  <DialogClose asChild>
+   241→                    <Button variant="outline" className="rounded-xl">Annuler</Button>
+   242→                  </DialogClose>
+   243→                  <Button
+   244→                    onClick={handleCreateBlank}
+   245→                    disabled={!newName.trim()}
+   246→                    className="rounded-xl gap-2"
+   247→                  >
+   248→                    <Plus className="w-4 h-4" />
+   249→                    Créer
+   250→                  </Button>
+   251→                </DialogFooter>
+   252→              </DialogContent>
+   253→            </Dialog>
+   254→          </div>
+   255→        )}
+   256→      </div>
+   257→
+   258→      {/* Main Content */}
+   259→      <div className="flex-1 overflow-hidden px-4 md:px-6 pb-4 md:pb-6">
+   260→        <AnimatePresence mode="wait">
+   261→          {selectedWorkflow ? (
+   262→            <WorkflowEditor
+   263→              key={`editor-${selectedWorkflow.id}`}
+   264→              workflow={selectedWorkflow}
+   265→              onUpdate={(updates) => updateWorkflow(selectedWorkflow.id, updates)}
+   266→              onBack={() => setSelectedId(null)}
+   267→            />
+   268→          ) : (
+   269→            <motion.div
+   270→              key="list"
+   271→              initial={{ opacity: 0 }}
+   272→              animate={{ opacity: 1 }}
+   273→              exit={{ opacity: 0 }}
+   274→              className="h-full overflow-y-auto custom-scrollbar space-y-8"
+   275→            >
+   276→              {/* Workflow List */}
+   277→              <section>
+   278→                <h2 className="text-lg font-semibold mb-4">Mes Workflows</h2>
+   279→                {workflows.length === 0 ? (
+   280→                  <motion.div
+   281→                    initial={{ opacity: 0, y: 20 }}
+   282→                    animate={{ opacity: 1, y: 0 }}
+   283→                    className="flex flex-col items-center justify-center py-16 text-center"
+   284→                  >
+   285→                    <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+   286→                      <Workflow className="w-10 h-10 text-primary" />
+   287→                    </div>
+   288→                    <h3 className="text-xl font-bold mb-2">Aucun workflow</h3>
+   289→                    <p className="text-muted-foreground max-w-sm mb-6">
+   290→                      Créez votre premier workflow automatisé ou utilisez un template pour démarrer rapidement.
+   291→                    </p>
+   292→                    <div className="flex gap-3">
+   293→                      <Button onClick={() => setCreateOpen(true)} className="gap-2 rounded-xl">
+   294→                        <Plus className="w-4 h-4" />
+   295→                        Créer vide
+   296→                      </Button>
+   297→                    </div>
+   298→                  </motion.div>
+   299→                ) : (
+   300→                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   301→                    <AnimatePresence>
+   302→                      {workflows.map((wf, i) => (
+   303→                        <WorkflowCard
+   304→                          key={wf.id}
+   305→                          workflow={wf}
+   306→                          index={i}
+   307→                          onSelect={() => setSelectedId(wf.id)}
+   308→                          onToggleActive={() => updateWorkflow(wf.id, { isActive: !wf.isActive })}
+   309→                          onDelete={() => { updateWorkflow(wf.id, { nodes: [] }) }}
+   310→                        />
+   311→                      ))}
+   312→                    </AnimatePresence>
+   313→                  </div>
+   314→                )}
+   315→              </section>
+   316→
+   317→              <Separator className="opacity-50" />
+   318→
+   319→              {/* Templates */}
+   320→              <section className="pb-8">
+   321→                <h2 className="text-lg font-semibold mb-4">Templates populaires</h2>
+   322→                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+   323→                  {TEMPLATES.map((template, i) => (
+   324→                    <motion.div
+   325→                      key={template.name}
+   326→                      custom={i}
+   327→                      variants={cardVariants}
+   328→                      initial="hidden"
+   329→                      animate="visible"
+   330→                    >
+   331→                      <Card
+   332→                        className="glass module-card p-5 cursor-pointer h-full"
+   333→                        onClick={() => handleCreateFromTemplate(template)}
+   334→                      >
+   335→                        <div className="flex items-start gap-3 mb-3">
+   336→                          <div className={`w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0`}>
+   337→                            <template.icon className="w-5 h-5 text-primary" />
+   338→                          </div>
+   339→                          <div className="min-w-0">
+   340→                            <h3 className="font-semibold text-sm">{template.name}</h3>
+   341→                            <Badge variant="secondary" className="text-[10px] mt-1">
+   342→                              {template.trigger}
+   343→                            </Badge>
+   344→                          </div>
+   345→                        </div>
+   346→                        <p className="text-sm text-muted-foreground">{template.description}</p>
+   347→                        <div className="mt-3 flex items-center gap-1.5 text-xs text-primary/70">
+   348→                          <Play className="w-3 h-3" />
+   349→                          <span>{template.nodes.length} étapes</span>
+   350→                        </div>
+   351→                      </Card>
+   352→                    </motion.div>
+   353→                  ))}
+   354→                </div>
+   355→              </section>
+   356→            </motion.div>
+   357→          )}
+   358→        </AnimatePresence>
+   359→      </div>
+   360→    </div>
+   361→  )
+   362→}
+   363→
+   364→/* ─── Workflow Card ─── */
+   365→function WorkflowCard({
+   366→  workflow,
+   367→  index,
+   368→  onSelect,
+   369→  onToggleActive,
+   370→  onDelete,
+   371→}: {
+   372→  workflow: WorkflowType
+   373→  index: number
+   374→  onSelect: () => void
+   375→  onToggleActive: () => void
+   376→  onDelete: () => void
+   377→}) {
+   378→  return (
+   379→    <motion.div
+   380→      custom={index}
+   381→      variants={cardVariants}
+   382→      initial="hidden"
+   383→      animate="visible"
+   384→      exit="exit"
+   385→      layout
+   386→    >
+   387→      <Card className="glass module-card p-5 h-full flex flex-col gap-3">
+   388→        <div className="flex items-start justify-between">
+   389→          <div className="flex items-center gap-2">
+   390→            <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center">
+   391→              <Workflow className="w-4 h-4 text-primary" />
+   392→            </div>
+   393→            <div>
+   394→              <h3 className="font-semibold text-sm">{workflow.name}</h3>
+   395→              <Badge variant="outline" className="text-[10px] mt-0.5">
+   396→                {workflow.trigger}
+   397→              </Badge>
+   398→            </div>
+   399→          </div>
+   400→          <Switch
+   401→            checked={workflow.isActive}
+   402→            onCheckedChange={onToggleActive}
+   403→          />
+   404→        </div>
+   405→
+   406→        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+   407→          <span className={`status-dot ${workflow.isActive ? 'active' : 'idle'}`} />
+   408→          <span>{workflow.isActive ? 'Actif' : 'Inactif'}</span>
+   409→        </div>
+   410→
+   411→        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+   412→          <Clock className="w-3 h-3" />
+   413→          <span>Dernière exécution : {relativeTime(workflow.lastRun)}</span>
+   414→        </div>
+   415→
+   416→        <p className="text-xs text-muted-foreground/70">{workflow.nodes.length} nœuds</p>
+   417→
+   418→        <div className="mt-auto flex items-center gap-2 pt-2">
+   419→          <Button variant="outline" size="sm" className="flex-1 gap-1.5 rounded-lg text-xs" onClick={onSelect}>
+   420→            <MousePointer className="w-3 h-3" />
+   421→            Modifier
+   422→          </Button>
+   423→          <AlertDialog>
+   424→            <AlertDialogTrigger asChild>
+   425→              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive/60 hover:text-destructive hover:bg-destructive/10 rounded-lg">
+   426→                <Trash2 className="w-3.5 h-3.5" />
+   427→              </Button>
+   428→            </AlertDialogTrigger>
+   429→            <AlertDialogContent className="glass-subtle">
+   430→              <AlertDialogHeader>
+   431→                <AlertDialogTitle>Supprimer le workflow</AlertDialogTitle>
+   432→                <AlertDialogDescription>
+   433→                  Êtes-vous sûr de vouloir supprimer <strong>{workflow.name}</strong> ?
+   434→                </AlertDialogDescription>
+   435→              </AlertDialogHeader>
+   436→              <AlertDialogFooter>
+   437→                <AlertDialogCancel className="rounded-xl">Annuler</AlertDialogCancel>
+   438→                <AlertDialogAction onClick={onDelete} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90">
+   439→                  Supprimer
+   440→                </AlertDialogAction>
+   441→              </AlertDialogFooter>
+   442→            </AlertDialogContent>
+   443→          </AlertDialog>
+   444→        </div>
+   445→      </Card>
+   446→    </motion.div>
+   447→  )
+   448→}
+   449→
+   450→/* ─── Workflow Editor ─── */
+   451→function WorkflowEditor({
+   452→  workflow,
+   453→  onUpdate,
+   454→  onBack,
+   455→}: {
+   456→  workflow: WorkflowType
+   457→  onUpdate: (updates: Partial<WorkflowType>) => void
+   458→  onBack: () => void
+   459→}) {
+   460→  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+   461→  const [dragInfo, setDragInfo] = useState<{ nodeId: string; offsetX: number; offsetY: number } | null>(null)
+   462→  const canvasRef = useRef<HTMLDivElement>(null)
+   463→  const [addMenuOpen, setAddMenuOpen] = useState(false)
+   464→
+   465→  const selectedNode = workflow.nodes.find((n) => n.id === selectedNodeId) || null
+   466→
+   467→  /* ─── Drag handlers ─── */
+   468→  const handlePointerDown = useCallback(
+   469→    (e: React.PointerEvent, nodeId: string) => {
+   470→      e.preventDefault()
+   471→      const node = workflow.nodes.find((n) => n.id === nodeId)
+   472→      if (!node) return
+   473→      setDragInfo({
+   474→        nodeId,
+   475→        offsetX: e.clientX - node.position.x,
+   476→        offsetY: e.clientY - node.position.y,
+   477→      })
+   478→      setSelectedNodeId(nodeId)
+   479→      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+   480→    },
+   481→    [workflow.nodes]
+   482→  )
+   483→
+   484→  const handlePointerMove = useCallback(
+   485→    (e: React.PointerEvent) => {
+   486→      if (!dragInfo) return
+   487→      const canvas = canvasRef.current
+   488→      if (!canvas) return
+   489→      const rect = canvas.getBoundingClientRect()
+   490→      const x = Math.max(0, e.clientX - rect.left - dragInfo.offsetX + canvas.scrollLeft)
+   491→      const y = Math.max(0, e.clientY - rect.top - dragInfo.offsetY + canvas.scrollTop)
+   492→      const updatedNodes = workflow.nodes.map((n) =>
+   493→        n.id === dragInfo.nodeId ? { ...n, position: { x: Math.round(x), y: Math.round(y) } } : n
+   494→      )
+   495→      onUpdate({ nodes: updatedNodes })
+   496→    },
+   497→    [dragInfo, workflow.nodes, onUpdate]
+   498→  )
+   499→
+   500→  const handlePointerUp = useCallback(() => {
+   501→    setDragInfo(null)
+   502→  }, [])
+   503→
+   504→  /* ─── Node config handlers ─── */
+   505→  const updateNodeConfig = useCallback(
+   506→    (nodeId: string, updates: Partial<WorkflowNode>) => {
+   507→      const updatedNodes = workflow.nodes.map((n) =>
+   508→        n.id === nodeId ? { ...n, ...updates } : n
+   509→      )
+   510→      onUpdate({ nodes: updatedNodes })
+   511→    },
+   512→    [workflow.nodes, onUpdate]
+   513→  )
+   514→
+   515→  const addNode = useCallback(
+   516→    (type: WorkflowNode['type']) => {
+   517→      const newNode: WorkflowNode = {
+   518→        id: `node-${Date.now()}`,
+   519→        type,
+   520→        label: type === 'trigger' ? 'Nouveau Déclencheur' : type === 'action' ? 'Nouvelle Action' : type === 'condition' ? 'Nouvelle Condition' : 'Nouvelle Sortie',
+   521→        config: {},
+   522→        position: { x: 200 + Math.random() * 300, y: 100 + Math.random() * 200 },
+   523→      }
+   524→      onUpdate({ nodes: [...workflow.nodes, newNode] })
+   525→      setSelectedNodeId(newNode.id)
+   526→      setAddMenuOpen(false)
+   527→    },
+   528→    [workflow.nodes, onUpdate]
+   529→  )
+   530→
+   531→  const deleteNode = useCallback(
+   532→    (nodeId: string) => {
+   533→      const updatedNodes = workflow.nodes.filter((n) => n.id !== nodeId)
+   534→      onUpdate({ nodes: updatedNodes })
+   535→      if (selectedNodeId === nodeId) setSelectedNodeId(null)
+   536→    },
+   537→    [workflow.nodes, onUpdate, selectedNodeId]
+   538→  )
+   539→
+   540→  /* ─── SVG connections ─── */
+   541→  const renderConnections = () => {
+   542→    const lines: React.ReactNode[] = []
+   543→    for (let i = 0; i < workflow.nodes.length - 1; i++) {
+   544→      const from = workflow.nodes[i]
+   545→      const to = workflow.nodes[i + 1]
+   546→      const nodeWidth = 200
+   547→      const nodeHeight = 80
+   548→      const x1 = from.position.x + nodeWidth
+   549→      const y1 = from.position.y + nodeHeight / 2
+   550→      const x2 = to.position.x
+   551→      const y2 = to.position.y + nodeHeight / 2
+   552→      const midX = (x1 + x2) / 2
+   553→
+   554→      lines.push(
+   555→        <path
+   556→          key={`conn-${from.id}-${to.id}`}
+   557→          d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`}
+   558→          fill="none"
+   559→          stroke="currentColor"
+   560→          strokeWidth="2"
+   561→          className="text-primary/30"
+   562→          strokeLinecap="round"
+   563→        />
+   564→      )
+   565→    }
+   566→    return lines
+   567→  }
+   568→
+   569→  return (
+   570→    <motion.div
+   571→      initial={{ opacity: 0, x: 20 }}
+   572→      animate={{ opacity: 1, x: 0 }}
+   573→      exit={{ opacity: 0, x: -20 }}
+   574→      className="flex gap-4 h-[calc(100vh-160px)]"
+   575→    >
+   576→      {/* Canvas Area */}
+   577→      <div className="flex-1 flex flex-col min-w-0">
+   578→        {/* Editor Toolbar */}
+   579→        <div className="flex items-center gap-3 mb-3">
+   580→          <Button variant="ghost" size="sm" onClick={onBack} className="gap-1.5 rounded-lg">
+   581→            <ArrowLeft className="w-4 h-4" />
+   582→            Retour
+   583→          </Button>
+   584→          <Separator orientation="vertical" className="h-5" />
+   585→          <h2 className="font-semibold text-sm truncate">{workflow.name}</h2>
+   586→          <Badge variant="secondary" className="text-[10px]">
+   587→            {workflow.nodes.length} nœuds
+   588→          </Badge>
+   589→          <div className="flex-1" />
+   590→          <Switch
+   591→            checked={workflow.isActive}
+   592→            onCheckedChange={(checked) => onUpdate({ isActive: checked })}
+   593→          />
+   594→          <span className="text-xs text-muted-foreground">
+   595→            {workflow.isActive ? 'Actif' : 'Inactif'}
+   596→          </span>
+   597→        </div>
+   598→
+   599→        {/* Canvas */}
+   600→        <div
+   601→          ref={canvasRef}
+   602→          className="flex-1 glass-subtle rounded-2xl relative overflow-auto custom-scrollbar"
+   603→          onPointerMove={handlePointerMove}
+   604→          onPointerUp={handlePointerUp}
+   605→          style={{
+   606→            backgroundImage:
+   607→              'radial-gradient(circle, currentColor 1px, transparent 1px)',
+   608→            backgroundSize: '24px 24px',
+   609→          }}
+   610→        >
+   611→          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ minWidth: '1200px', minHeight: '500px' }}>
+   612→            {renderConnections()}
+   613→          </svg>
+   614→
+   615→          <div className="relative" style={{ minWidth: '1200px', minHeight: '500px' }}>
+   616→            <AnimatePresence>
+   617→              {workflow.nodes.map((node) => {
+   618→                const typeCfg = NODE_TYPE_CONFIG[node.type] || NODE_TYPE_CONFIG.action
+   619→                const Icon = typeCfg.icon
+   620→                const isSelected = node.id === selectedNodeId
+   621→
+   622→                return (
+   623→                  <motion.div
+   624→                    key={node.id}
+   625→                    initial={{ opacity: 0, scale: 0.8 }}
+   626→                    animate={{ opacity: 1, scale: 1 }}
+   627→                    exit={{ opacity: 0, scale: 0.8 }}
+   628→                    onPointerDown={(e) => handlePointerDown(e, node.id)}
+   629→                    onClick={() => setSelectedNodeId(node.id)}
+   630→                    className={`absolute cursor-grab active:cursor-grabbing select-none ${
+   631→                      dragInfo?.nodeId === node.id ? 'z-20' : 'z-10'
+   632→                    }`}
+   633→                    style={{
+   634→                      left: node.position.x,
+   635→                      top: node.position.y,
+   636→                      width: 200,
+   637→                    }}
+   638→                  >
+   639→                    <div
+   640→                      className={`rounded-xl p-3 transition-all duration-200 ${
+   641→                        isSelected
+   642→                          ? 'glass-strong ring-2 ring-primary/50 shadow-lg'
+   643→                          : 'glass module-card'
+   644→                      }`}
+   645→                    >
+   646→                      <div className="flex items-start gap-2">
+   647→                        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 cursor-grab" style={{ background: 'var(--accent)' }}>
+   648→                          <Icon className={`w-4 h-4 ${typeCfg.color}`} />
+   649→                        </div>
+   650→                        <div className="min-w-0 flex-1">
+   651→                          <p className="text-sm font-medium truncate">{node.label}</p>
+   652→                          <Badge
+   653→                            variant="outline"
+   654→                            className="text-[10px] mt-1"
+   655→                          >
+   656→                            {typeCfg.label}
+   657→                          </Badge>
+   658→                        </div>
+   659→                        <GripVertical className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0 mt-1" />
+   660→                      </div>
+   661→
+   662→                      {/* Connection point (right) */}
+   663→                      <div className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-primary/30 border-2 border-primary/60" />
+   664→                      {/* Connection point (left) */}
+   665→                      <div className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-muted-foreground/20 border-2 border-muted-foreground/40" />
+   666→                    </div>
+   667→                  </motion.div>
+   668→                )
+   669→              })}
+   670→            </AnimatePresence>
+   671→          </div>
+   672→
+   673→          {/* Add Node Button */}
+   674→          <div className="absolute bottom-4 left-4 z-30">
+   675→            <div className="relative">
+   676→              <Button
+   677→                onClick={() => setAddMenuOpen(!addMenuOpen)}
+   678→                size="sm"
+   679→                className="rounded-xl gap-1.5 shadow-lg"
+   680→              >
+   681→                <Plus className="w-4 h-4" />
+   682→                Ajouter un nœud
+   683→              </Button>
+   684→              <AnimatePresence>
+   685→                {addMenuOpen && (
+   686→                  <motion.div
+   687→                    initial={{ opacity: 0, y: 5, scale: 0.95 }}
+   688→                    animate={{ opacity: 1, y: 0, scale: 1 }}
+   689→                    exit={{ opacity: 0, y: 5, scale: 0.95 }}
+   690→                    className="absolute bottom-full left-0 mb-2 glass-strong rounded-xl p-2 min-w-[160px] z-50"
+   691→                  >
+   692→                    {ADDABLE_NODE_TYPES.map((item) => {
+   693→                      const cfg = NODE_TYPE_CONFIG[item.type]
+   694→                      const ItemIcon = cfg.icon
+   695→                      return (
+   696→                        <button
+   697→                          key={item.type}
+   698→                          onClick={() => addNode(item.type)}
+   699→                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-accent transition-colors text-left"
+   700→                        >
+   701→                          <ItemIcon className={`w-4 h-4 ${cfg.color}`} />
+   702→                          {item.label}
+   703→                        </button>
+   704→                      )
+   705→                    })}
+   706→                  </motion.div>
+   707→                )}
+   708→              </AnimatePresence>
+   709→            </div>
+   710→          </div>
+   711→        </div>
+   712→      </div>
+   713→
+   714→      {/* Right Panel - Node Config */}
+   715→      <AnimatePresence>
+   716→        {selectedNode && (
+   717→          <motion.aside
+   718→            initial={{ opacity: 0, x: 20, width: 0 }}
+   719→            animate={{ opacity: 1, x: 0, width: 288 }}
+   720→            exit={{ opacity: 0, x: 20, width: 0 }}
+   721→            className="w-72 shrink-0 overflow-hidden"
+   722→          >
+   723→            <div className="glass-subtle rounded-2xl p-4 h-full overflow-y-auto custom-scrollbar">
+   724→              <div className="flex items-center justify-between mb-4">
+   725→                <h3 className="font-semibold text-sm">Configuration</h3>
+   726→                <Button
+   727→                  variant="ghost"
+   728→                  size="icon"
+   729→                  className="h-7 w-7 text-destructive/60 hover:text-destructive rounded-lg"
+   730→                  onClick={() => deleteNode(selectedNode.id)}
+   731→                >
+   732→                  <Trash2 className="w-3.5 h-3.5" />
+   733→                </Button>
+   734→              </div>
+   735→
+   736→              <div className="space-y-4">
+   737→                {/* Node Type */}
+   738→                <div>
+   739→                  <Label className="text-xs text-muted-foreground">Type</Label>
+   740→                  <div className="flex items-center gap-2 mt-1.5">
+   741→                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${NODE_TYPE_CONFIG[selectedNode.type]?.bg}`}>
+   742→                      {(() => {
+   743→                        const Icon = NODE_TYPE_CONFIG[selectedNode.type]?.icon || Zap
+   744→                        return <Icon className={`w-3.5 h-3.5 ${NODE_TYPE_CONFIG[selectedNode.type]?.color}`} />
+   745→                      })()}
+   746→                    </div>
+   747→                    <Badge variant="secondary" className="text-xs">
+   748→                      {NODE_TYPE_CONFIG[selectedNode.type]?.label}
+   749→                    </Badge>
+   750→                  </div>
+   751→                </div>
+   752→
+   753→                <Separator />
+   754→
+   755→                {/* Label */}
+   756→                <div className="space-y-2">
+   757→                  <Label htmlFor="node-label">Nom</Label>
+   758→                  <Input
+   759→                    id="node-label"
+   760→                    value={selectedNode.label}
+   761→                    onChange={(e) => updateNodeConfig(selectedNode.id, { label: e.target.value })}
+   762→                    className="h-8 text-sm"
+   763→                  />
+   764→                </div>
+   765→
+   766→                {/* Type-specific config */}
+   767→                {selectedNode.type === 'trigger' && (
+   768→                  <>
+   769→                    <div className="space-y-2">
+   770→                      <Label htmlFor="trigger-type">Type de déclencheur</Label>
+   771→                      <Input
+   772→                        id="trigger-type"
+   773→                        value={(selectedNode.config.type as string) || 'manual'}
+   774→                        onChange={(e) =>
+   775→                          updateNodeConfig(selectedNode.id, {
+   776→                            config: { ...selectedNode.config, type: e.target.value },
+   777→                          })
+   778→                        }
+   779→                        className="h-8 text-sm"
+   780→                        placeholder="manual, scheduled, webhook..."
+   781→                      />
+   782→                    </div>
+   783→                    {selectedNode.config.interval && (
+   784→                      <div className="space-y-2">
+   785→                        <Label htmlFor="trigger-interval">Intervalle</Label>
+   786→                        <Input
+   787→                          id="trigger-interval"
+   788→                          value={selectedNode.config.interval as string}
+   789→                          onChange={(e) =>
+   790→                            updateNodeConfig(selectedNode.id, {
+   791→                              config: { ...selectedNode.config, interval: e.target.value },
+   792→                            })
+   793→                          }
+   794→                          className="h-8 text-sm"
+   795→                        />
+   796→                      </div>
+   797→                    )}
+   798→                  </>
+   799→                )}
+   800→
+   801→                {selectedNode.type === 'action' && (
+   802→                  <div className="space-y-2">
+   803→                    <Label htmlFor="action-desc">Description de l&apos;action</Label>
+   804→                    <Input
+   805→                      id="action-desc"
+   806→                      value={(selectedNode.config.description as string) || ''}
+   807→                      onChange={(e) =>
+   808→                        updateNodeConfig(selectedNode.id, {
+   809→                          config: { ...selectedNode.config, description: e.target.value },
+   810→                        })
+   811→                      }
+   812→                      className="h-8 text-sm"
+   813→                      placeholder="Décrivez cette action..."
+   814→                    />
+   815→                  </div>
+   816→                )}
+   817→
+   818→                {selectedNode.type === 'condition' && (
+   819→                  <>
+   820→                    <div className="space-y-2">
+   821→                      <Label htmlFor="cond-field">Champ</Label>
+   822→                      <Input
+   823→                        id="cond-field"
+   824→                        value={(selectedNode.config.field as string) || ''}
+   825→                        onChange={(e) =>
+   826→                          updateNodeConfig(selectedNode.id, {
+   827→                            config: { ...selectedNode.config, field: e.target.value },
+   828→                          })
+   829→                        }
+   830→                        className="h-8 text-sm"
+   831→                        placeholder="ex: count, status..."
+   832→                      />
+   833→                    </div>
+   834→                    <div className="grid grid-cols-2 gap-2">
+   835→                      <div className="space-y-2">
+   836→                        <Label htmlFor="cond-op">Opérateur</Label>
+   837→                        <Input
+   838→                          id="cond-op"
+   839→                          value={(selectedNode.config.operator as string) || ''}
+   840→                          onChange={(e) =>
+   841→                            updateNodeConfig(selectedNode.id, {
+   842→                              config: { ...selectedNode.config, operator: e.target.value },
+   843→                            })
+   844→                          }
+   845→                          className="h-8 text-sm"
+   846→                          placeholder=">, <, =="
+   847→                        />
+   848→                      </div>
+   849→                      <div className="space-y-2">
+   850→                        <Label htmlFor="cond-val">Valeur</Label>
+   851→                        <Input
+   852→                          id="cond-val"
+   853→                          value={String(selectedNode.config.value || '')}
+   854→                          onChange={(e) =>
+   855→                            updateNodeConfig(selectedNode.id, {
+   856→                              config: { ...selectedNode.config, value: e.target.value },
+   857→                            })
+   858→                          }
+   859→                          className="h-8 text-sm"
+   860→                          placeholder="0"
+   861→                        />
+   862→                      </div>
+   863→                    </div>
+   864→                  </>
+   865→                )}
+   866→
+   867→                {selectedNode.type === 'output' && (
+   868→                  <div className="space-y-2">
+   869→                    <Label htmlFor="output-target">Cible de sortie</Label>
+   870→                    <Input
+   871→                      id="output-target"
+   872→                      value={(selectedNode.config.channel as string) || (selectedNode.config.to as string) || (selectedNode.config.db as string) || ''}
+   873→                      onChange={(e) =>
+   874→                        updateNodeConfig(selectedNode.id, {
+   875→                          config: { ...selectedNode.config, channel: e.target.value },
+   876→                        })
+   877→                      }
+   878→                      className="h-8 text-sm"
+   879→                      placeholder="email, slack, fichier..."
+   880→                    />
+   881→                  </div>
+   882→                )}
+   883→
+   884→                <Separator />
+   885→
+   886→                {/* Position info */}
+   887→                <div className="text-xs text-muted-foreground space-y-1">
+   888→                  <p>Position : ({selectedNode.position.x}, {selectedNode.position.y})</p>
+   889→                  <p>ID : {selectedNode.id}</p>
+   890→                </div>
+   891→
+   892→                <Button
+   893→                  size="sm"
+   894→                  className="w-full gap-2 rounded-xl"
+   895→                  onClick={() => {
+   896→                    // Save is implicit via the store updates
+   897→                  }}
+   898→                >
+   899→                  <Save className="w-3.5 h-3.5" />
+   900→                  Enregistrer
+   901→                </Button>
+   902→              </div>
+   903→            </div>
+   904→          </motion.aside>
+   905→        )}
+   906→      </AnimatePresence>
+   907→    </motion.div>
+   908→  )
+   909→}
