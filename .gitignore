@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files
+.env
+.env.local
+.env.production
 
 # vercel
 .vercel
@@ -58,5 +60,15 @@ server.log
 # Tool results
 /tool-results/
 
+# Internal scripts
+.zscripts/
+agent-ctx/
+
+# Env example (keep this)
+!.env.example
+
 # Skills directory
 /skills/
+
+# Downloads
+download/
