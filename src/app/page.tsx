@@ -19,6 +19,9 @@ const DocumentsModule = lazy(() => import('@/components/modules/documents-module
 const AgentsModule = lazy(() => import('@/components/modules/agents-module'))
 const AutomationModule = lazy(() => import('@/components/modules/automation-module'))
 const CommandCenterModule = lazy(() => import('@/components/modules/command-center-module'))
+const VoiceModule = lazy(() => import('@/components/modules/voice-module'))
+const MemoryModule = lazy(() => import('@/components/modules/memory-module'))
+const TimelineModule = lazy(() => import('@/components/modules/timeline-module'))
 
 function ModuleLoader() {
   return (
@@ -42,6 +45,9 @@ function ModuleRouter() {
     documents: DocumentsModule,
     agents: AgentsModule,
     automation: AutomationModule,
+    voice: VoiceModule,
+    memory: MemoryModule,
+    timeline: TimelineModule,
     'command-center': CommandCenterModule,
   }
 

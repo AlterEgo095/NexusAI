@@ -44,7 +44,8 @@ setInterval(() => {
       store.delete(ip)
     }
   }
-}, 5 * 60_000).unref()
+}, 5 * 60_000)
+// Note: .unref() is Node.js-only; Edge runtime doesn't support it
 
 function getRoutePattern(pathname: string): string {
   // Match API route patterns

@@ -10,6 +10,9 @@ import {
   Bot,
   Workflow,
   Monitor,
+  Brain,
+  Clock,
+  Mic,
   Moon,
   Sun,
   Plus,
@@ -36,6 +39,9 @@ const moduleItems: { id: ModuleId; label: string; icon: LucideIcon }[] = [
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'agents', label: 'Agents IA', icon: Bot },
   { id: 'automation', label: 'Automatisation', icon: Workflow },
+  { id: 'voice', label: 'Mode Vocal', icon: Mic },
+  { id: 'memory', label: 'Mémoire', icon: Brain },
+  { id: 'timeline', label: 'Timeline', icon: Clock },
   { id: 'command-center', label: 'Command Center', icon: Monitor },
 ]
 
