@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
             content: `Recherche : "${query}"\n\nRésultats trouvés :\n${searchContext}\n\nFournis un résumé clair et concis de ces résultats en français, en citant les sources.`,
           },
         ])
-      summary = completion || ''
+      summary = completion.content || ''
     } catch {
       summary = `Voici les résultats pour "${query}". Consultez les sources ci-dessous pour plus d'informations.`
     }

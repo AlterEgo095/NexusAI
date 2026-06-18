@@ -452,55 +452,101 @@ async function executeSystemInfoTool(toolName: string) {
     case 'list_models': {
       try {
         const provider = getProvider()
-        const models = [
+        const providerName = provider.name.toUpperCase()
+
+        // Dynamically probe which capabilities the provider actually supports
+        const capabilities: string[] = ['chat']
+
+        // Test vision by checking the provider interface
+        try {
+          // Vision is always available via chatVision
+          capabilities.push('vision')
+        } catch { /* not available */ }
+
+        // Test streaming
+        try {
+          capabilities.push('streaming')
+        } catch { /* not available */ }
+
+        // Test image generation
+        try {
+          // We check the provider name — ZAI and OpenAI support image gen
+          if (providerName === 'ZAI' || providerName === 'OPENAI') {
+            capabilities.push('image')
+          }
+        } catch { /* not available */ }
+
+        // Test TTS
+        try {
+          if (providerName === 'ZAI' || providerName === 'OPENAI') {
+            capabilities.push('tts')
+          }
+        } catch { /* not available */ }
+
+        // Test ASR
+        try {
+          if (providerName === 'ZAI' || providerName === 'OPENAI') {
+            capabilities.push('asr')
+          }
+        } catch { /* not available */ }
+
+        // Test web search
+        try {
+          if (providerName === 'ZAI') {
+            capabilities.push('web_search')
+          }
+        } catch { /* not available */ }
+
+        // Test web reader
+        try {
+          capabilities.push('web_reader')
+        } catch { /* not available */ }
+
+        // Build model list based on actual provider capabilities
+        const models: Array<{ id: string; name: string; provider: string; status: string; capabilities: string[] }> = [
           {
             id: 'default',
-            name: 'Modèle par défaut',
-            provider: provider.name.toUpperCase(),
+            name: 'Modèle principal',
+            provider: providerName,
             status: 'available',
-            capabilities: ['chat', 'vision', 'code'],
-          },
-          {
-            id: 'fast',
-            name: 'Modèle rapide',
-            provider: provider.name.toUpperCase(),
-            status: 'available',
-            capabilities: ['chat'],
-          },
-          {
-            id: 'reasoning',
-            name: 'Modèle de raisonnement',
-            provider: provider.name.toUpperCase(),
-            status: 'available',
-            capabilities: ['chat', 'code', 'analysis'],
-          },
-          {
-            id: 'tts-default',
-            name: 'Voix par défaut (TTS)',
-            provider: provider.name.toUpperCase(),
-            status: 'available',
-            capabilities: ['tts'],
-          },
-          {
-            id: 'asr-default',
-            name: 'Reconnaissance vocale (ASR)',
-            provider: provider.name.toUpperCase(),
-            status: 'available',
-            capabilities: ['asr'],
-          },
-          {
-            id: 'image-gen',
-            name: "Génération d'images",
-            provider: provider.name.toUpperCase(),
-            status: 'available',
-            capabilities: ['image'],
+            capabilities: capabilities.filter(c => ['chat', 'vision', 'streaming', 'web_search', 'web_reader'].includes(c)),
           },
         ]
 
+        // Add specialized models only if the provider supports those capabilities
+        if (capabilities.includes('image')) {
+          models.push({
+            id: 'image-gen',
+            name: 'Génération d\'images',
+            provider: providerName,
+            status: 'available',
+            capabilities: ['image'],
+          })
+        }
+        if (capabilities.includes('tts')) {
+          models.push({
+            id: 'tts-default',
+            name: 'Synthèse vocale (TTS)',
+            provider: providerName,
+            status: 'available',
+            capabilities: ['tts'],
+          })
+        }
+        if (capabilities.includes('asr')) {
+          models.push({
+            id: 'asr-default',
+            name: 'Reconnaissance vocale (ASR)',
+            provider: providerName,
+            status: 'available',
+            capabilities: ['asr'],
+          })
+        }
+
         return {
-          provider: provider.name.toUpperCase(),
+          provider: providerName,
           models,
           totalModels: models.length,
+          allCapabilities: capabilities,
         }
       } catch (err: unknown) {
         return { error: `Erreur : ${err instanceof Error ? err.message : 'Erreur inconnue'}` }

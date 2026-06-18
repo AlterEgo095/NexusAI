@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
           },
           { role: "user", content: aiPrompt },
         ]);
-      docContent = response || docContent;
+      docContent = response.content || docContent;
     }
 
     const document = await db.document.create({

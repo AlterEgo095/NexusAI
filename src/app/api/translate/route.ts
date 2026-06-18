@@ -32,19 +32,19 @@ Respond with the translation in this exact JSON format (no markdown, no code fen
     ])
 
     // Parse the JSON response
-    let translatedText = raw
+    let translatedText = raw.content
     let detectedLang = sourceLang === 'auto-detect' ? 'detected' : sourceLang
 
     try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/)
+      const jsonMatch = raw.content.match(/\{[\s\S]*\}/)
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0])
-        translatedText = parsed.translatedText || raw
+        translatedText = parsed.translatedText || raw.content
         detectedLang = parsed.detectedSourceLang || 'detected'
       }
     } catch {
       // If JSON parsing fails, use the raw response as the translation
-      translatedText = raw
+      translatedText = raw.content
     }
 
     // Save to database

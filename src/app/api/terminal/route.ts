@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { ensureDefaultUser, incrementUsage } from '@/lib/ensure-user'
 import { getProvider } from '@/lib/ai-provider'
+import { readdir, stat } from 'fs/promises'
+import path from 'path'
 
 /* ═══════════════════════════════════════════════════════════════
    Security
@@ -58,27 +60,50 @@ async function handleWhoami(): Promise<string> {
   }
 }
 
-function handlePwd(): string { return '/home/z/my-project' }
+function handlePwd(): string { return process.cwd() }
 
-function handleLs(): string {
-  return `📁 src/
-  📁 app/
-    📁 api/          (16 routes API)
-    📁 modules/      (pas utilisé en App Router)
-  📁 components/
-    📁 modules/      (17 modules frontend)
-    📁 ui/           (shadcn/ui)
-    📁 workspace/    (sidebar, palette, thème)
-  📁 lib/            (utilitaires, DB, IA)
-  📁 store/          (Zustand store)
-  📁 hooks/
-  📁 prisma/
-  📁 public/
-  📁 mini-services/
-  📄 next.config.mjs
-  📄 tailwind.config.ts
-  📄 tsconfig.json
-  📄 package.json`
+async function handleLs(targetPath?: string): Promise<string> {
+  try {
+    const base = process.cwd()
+    const resolved = targetPath
+      ? path.resolve(base, targetPath)
+      : base
+
+    // Security: only allow listing within the project
+    if (!resolved.startsWith(base)) {
+      return '🚫 Accès refusé : hors du répertoire du projet'
+    }
+
+    const entries = await readdir(resolved, { withFileTypes: true })
+    const dirs: string[] = []
+    const files: string[] = []
+
+    for (const entry of entries) {
+      // Skip hidden files and node_modules
+      if (entry.name.startsWith('.') || entry.name === 'node_modules' || entry.name === '.next' || entry.name === 'db') {
+        continue
+      }
+      if (entry.isDirectory()) {
+        // Count children for directories
+        try {
+          const children = await readdir(path.join(resolved, entry.name))
+          dirs.push(`📁 ${entry.name}/      (${children.length} éléments)`)
+        } catch {
+          dirs.push(`📁 ${entry.name}/`)
+        }
+      } else {
+        const ext = path.extname(entry.name).slice(1) || 'file'
+        files.push(`📄 ${entry.name}      [${ext}]`)
+      }
+    }
+
+    dirs.sort()
+    files.sort()
+    const header = targetPath ? `📋 ${resolved} :` : `📋 ${base} :`
+    return [header, ...dirs, ...files].join('\n  ')
+  } catch {
+    return '❌ Impossible de lister le répertoire'
+  }
 }
 
 async function handleStats(): Promise<string> {
@@ -121,18 +146,61 @@ async function handleStats(): Promise<string> {
   }
 }
 
-function handleNeofetch(): string {
-  return `        ╱╲               nexusai@workspace
+async function handleNeofetch(): Promise<string> {
+  try {
+    // Dynamically count frontend modules
+    const modulesDir = path.join(process.cwd(), 'src', 'components', 'modules')
+    let moduleCount = 0
+    try {
+      const entries = await readdir(modulesDir)
+      moduleCount = entries.filter(e => e.endsWith('-module.tsx')).length
+    } catch { /* ignore */ }
+
+    // Dynamically count API routes
+    const apiDir = path.join(process.cwd(), 'src', 'app', 'api')
+    let apiCount = 0
+    try {
+      const apiEntries = await readdir(apiDir, { withFileTypes: true })
+      for (const entry of apiEntries) {
+        if (entry.isDirectory()) {
+          // Check if it has route.ts
+          try {
+            await stat(path.join(apiDir, entry.name, 'route.ts'))
+            apiCount++
+          } catch { /* no route.ts */ }
+        } else if (entry.name === 'route.ts') {
+          apiCount++
+        }
+      }
+    } catch { /* ignore */ }
+
+    const uptime = process.uptime()
+    const hours = Math.floor(uptime / 3600)
+    const minutes = Math.floor((uptime % 3600) / 60)
+    const seconds = Math.floor(uptime % 60)
+
+    return `        ╱╲               nexusai@workspace
        ╱  ╲              ─────────────────
       ╱    ╲             OS: NexusAI Workspace v1.0
      ╱  ▲   ╲            Host: Next.js 16 + TypeScript
     ╱  ╱ ╲   ╲           Kernel: Bun Runtime
-   ╱  ╱   ╲   ╲          Uptime: ${Math.floor(process.uptime() / 3600)}h ${Math.floor((process.uptime() % 3600) / 60)}m
+   ╱  ╱   ╲   ╲          Uptime: ${hours}h ${minutes}m ${seconds}s
   ╱  ╱     ╲   ╲         Shell: Terminal IA
                           AI: ${process.env.AI_PROVIDER || 'zai'}
                           DB: SQLite + Prisma ORM
-                          Modules: 17
-                          Framework: React 19`
+                          Modules: ${moduleCount}
+                          API Routes: ${apiCount}
+                          Framework: React 19
+                          Node: ${process.version}`
+  } catch {
+    return `        ╱╲               nexusai@workspace
+       ╱  ╲              ─────────────────
+      ╱    ╲             OS: NexusAI Workspace v1.0
+     ╱  ▲   ╲            Host: Next.js 16 + TypeScript
+    ╱  ╱ ╲   ╲           Kernel: Bun Runtime
+  ╱  ╱     ╲   ╲         Shell: Terminal IA
+                          AI: ${process.env.AI_PROVIDER || 'zai'}`
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -207,13 +275,13 @@ export async function POST(request: NextRequest) {
       case 'date': output = handleDate(); break
       case 'whoami': output = await handleWhoami(); break
       case 'pwd': output = handlePwd(); break
-      case 'ls': output = handleLs(); break
+      case 'ls': output = await handleLs(args.trim() || undefined); break
       case 'ai':
         if (!args.trim()) { output = '❌ Usage: ai <question>'; type = 'error' }
         else { output = await handleAI(args); type = 'ai' }
         break
       case 'stats': output = await handleStats(); break
-      case 'neofetch': output = handleNeofetch(); break
+      case 'neofetch': output = await handleNeofetch(); break
       default:
         if (aiMode) { output = await handleAIInterpret(trimmed); type = 'ai' }
         else { output = `❌ Commande non trouvée : "${cmd}"\n   Tapez "help" ou activez le mode IA (🧠).`; type = 'error' }
