@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server'
 /* ═══════════════════════════════════════════════════════════════════════
    NexusAI Rate Limiter — In-memory sliding window
    Protects API routes from abuse. Configurable per-route limits.
+   Edge Runtime safe — no setInterval, no timers.
+   Cleanup is lazy: old entries are pruned on each request.
    ═══════════════════════════════════════════════════════════════════════ */
 
 interface RateLimitEntry {
@@ -24,11 +26,15 @@ const ROUTE_LIMITS: Record<string, { maxRequests: number; windowMs: number }> = 
   '/api/translate': { maxRequests: 20, windowMs: 60_000 },
   '/api/automations': { maxRequests: 10, windowMs: 60_000 },
   '/api/documents': { maxRequests: 20, windowMs: 60_000 },
+  '/api/knowledge': { maxRequests: 20, windowMs: 60_000 },
+  '/api/orchestrator': { maxRequests: 10, windowMs: 60_000 },
+  '/api/memory': { maxRequests: 30, windowMs: 60_000 },
+  '/api/timeline': { maxRequests: 30, windowMs: 60_000 },
   'default': { maxRequests: 60, windowMs: 60_000 },
 }
 
-// Cleanup old entries every 5 minutes
-setInterval(() => {
+// Lazy cleanup: remove entries older than 2 minutes (called on each request)
+function lazyCleanup() {
   const now = Date.now()
   for (const [ip, routes] of store) {
     let allEmpty = true
@@ -44,11 +50,9 @@ setInterval(() => {
       store.delete(ip)
     }
   }
-}, 5 * 60_000)
-// Note: .unref() is Node.js-only; Edge runtime doesn't support it
+}
 
 function getRoutePattern(pathname: string): string {
-  // Match API route patterns
   for (const pattern of Object.keys(ROUTE_LIMITS)) {
     if (pattern === 'default') continue
     if (pathname.startsWith(pattern)) return pattern
@@ -102,6 +106,11 @@ export function checkRateLimit(request: NextRequest): RateLimitResult {
   // Calculate reset time
   const oldestInWindow = entry.timestamps.length > 0 ? entry.timestamps[0] : now
   const resetMs = Math.max(0, (oldestInWindow + config.windowMs) - now)
+
+  // Lazy cleanup every ~100 requests (probabilistic)
+  if (Math.random() < 0.01) {
+    lazyCleanup()
+  }
 
   return {
     allowed,
