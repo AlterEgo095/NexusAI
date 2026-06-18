@@ -1,11 +1,20 @@
 import { db } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 export async function ensureDefaultUser() {
   let user = await db.user.findFirst({ where: { email: 'user@nexusai.local' } })
   if (!user) {
-    user = await db.user.create({
-      data: { email: 'user@nexusai.local', name: 'NexusAI User', role: 'admin', credits: 10000 }
-    })
+    try {
+      user = await db.user.create({
+        data: { email: 'user@nexusai.local', name: 'NexusAI User', role: 'admin', credits: 10000 }
+      })
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        user = await db.user.findFirst({ where: { email: 'user@nexusai.local' } })
+      } else {
+        throw e
+      }
+    }
   }
   return user
 }
