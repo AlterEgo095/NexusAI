@@ -31,6 +31,9 @@ const CanvasModule = lazy(() => import('@/components/modules/canvas-module'))
 const BrowserModule = lazy(() => import('@/components/modules/browser-module'))
 const TerminalModule = lazy(() => import('@/components/modules/terminal-module'))
 const McpModule = lazy(() => import('@/components/modules/mcp-module'))
+const MarketplaceModule = lazy(() => import('@/components/modules/marketplace-module'))
+const ComposerModule = lazy(() => import('@/components/modules/composer-module'))
+const ConnectorsModule = lazy(() => import('@/components/modules/connectors-module'))
 const SettingsModule = lazy(() => import('@/components/modules/settings-module'))
 const AdminModule = lazy(() => import('@/components/modules/admin-module'))
 
@@ -66,6 +69,9 @@ function ModuleRouter() {
     browser: BrowserModule,
     terminal: TerminalModule,
     mcp: McpModule,
+    marketplace: MarketplaceModule,
+    composer: ComposerModule,
+    connectors: ConnectorsModule,
     settings: SettingsModule,
     admin: AdminModule,
   }

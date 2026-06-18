@@ -26,6 +26,9 @@ import {
   Plug,
   Settings,
   Shield,
+  Store,
+  Network,
+  Link2,
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useWorkspaceStore, type ModuleId } from '@/store/workspace-store'
@@ -71,6 +74,9 @@ const navItems: NavItem[] = [
   { id: 'browser', label: 'Browser Agent', icon: Globe },
   { id: 'terminal', label: 'Terminal IA', icon: TerminalSquare },
   { id: 'mcp', label: 'MCP', icon: Plug },
+  { id: 'marketplace', label: 'Marketplace', icon: Store },
+  { id: 'composer', label: 'Composer', icon: Network },
+  { id: 'connectors', label: 'Connecteurs', icon: Link2 },
   { separator: true },
   { id: 'settings', label: 'Paramètres', icon: Settings },
   { id: 'admin', label: 'Admin', icon: Shield },

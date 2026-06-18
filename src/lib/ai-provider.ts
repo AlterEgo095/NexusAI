@@ -135,6 +135,7 @@ class ZAIProvider implements AIProvider {
     const sdkMessages = messages.map(m => ({ role: m.role, content: m.content }))
 
     // ZAI SDK might not support native streaming, so we chunk the response
+    // Using sentence-level chunking for much smoother perceived streaming
     const response = await zai.chat.completions.create({
       messages: sdkMessages,
       model: options?.model,
@@ -142,10 +143,13 @@ class ZAIProvider implements AIProvider {
     })
 
     const fullContent = response.choices?.[0]?.message?.content ?? ''
-    // Simulate streaming by emitting word-by-word
-    const words = fullContent.split(/(\s+)/)
-    for (const word of words) {
-      yield word
+
+    // Sentence-level streaming: split on sentence boundaries for natural reading
+    const sentences = fullContent.match(/[^.!?。！？\n]+[.!?。！？\n]*/g) || [fullContent]
+    for (const sentence of sentences) {
+      if (sentence.trim()) {
+        yield sentence
+      }
     }
   }
 

@@ -6,6 +6,7 @@
 
 import { db } from './db'
 import { getProvider } from './ai-provider'
+import { semanticSearch, vectorizeKnowledgeBase } from './embeddings'
 
 export interface ParsedDocument {
   text: string
@@ -217,13 +218,20 @@ export async function ingestFile(
     })),
   })
 
+  // Re-index knowledge base with TF-IDF embeddings in the background
+  try {
+    await vectorizeKnowledgeBase(knowledgeBaseId)
+  } catch {
+    // Vectorization failure should not block ingestion
+  }
+
   return {
     chunksCreated: created.count,
     totalChars: parsed.text.length,
   }
 }
 
-// ── Retrieval (keyword-based for Phase 1) ──
+// ── Retrieval (semantic search with keyword fallback) ──
 
 export async function retrieveChunks(
   knowledgeBaseId: string,
@@ -238,7 +246,19 @@ export async function retrieveChunks(
 
   if (allChunks.length === 0) return []
 
-  // Score by keyword overlap
+  // Check if embeddings are available — use semantic search if so
+  const hasEmbeddings = allChunks.some(c => c.embedding !== null && c.embedding.length > 2)
+
+  if (hasEmbeddings) {
+    try {
+      const results = await semanticSearch(knowledgeBaseId, query, limit)
+      if (results.length > 0) return results
+    } catch {
+      // Semantic search failed, fall through to keyword matching
+    }
+  }
+
+  // Keyword-based fallback
   const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2)
   const scored = allChunks.map(chunk => {
     const chunkText = chunk.content.toLowerCase()

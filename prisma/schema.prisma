@@ -36,9 +36,79 @@ model User {
   canvases Canvas[]
   browserSessions BrowserSession[]
   mcpConnections McpConnection[]
+  connectors     Connector[]
 }
 
-// ... (existing models unchanged)
+model MarketplaceAgent {
+  id            String   @id @default(cuid())
+  agentId       String   @unique   /// slug like "research-agent"
+  name          String
+  description   String
+  longDescription String? /// detailed description for detail view
+  category      String   /// research | code | content | data | design | marketing | productivity | security | multimodal | business
+  icon          String   @default("🤖")
+  color         String   @default("#6366f1")
+  systemPrompt  String
+  tools         String   @default("[]") /// JSON array of tool names
+  capabilities  String   @default("[]") /// JSON array of capability tags
+  author        String   @default("NexusAI")
+  version       String   @default("1.0.0")
+  rating        Float    @default(4.5)
+  downloads     Int      @default(0)
+  isBuiltIn     Boolean  @default(true)
+  isPublished   Boolean  @default(true)
+  tags          String   @default("[]") /// JSON array of search tags
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Connector {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  type          String   /// github | gitlab | slack | discord | gmail | notion | trello | jira | google_drive | webhook | custom
+  icon          String   @default("🔌")
+  status        String   @default("disconnected") /// connected | disconnected | error
+  config        String   @default("{}") /// JSON config (API keys, tokens, etc.)
+  capabilities  String   @default("[]") /// JSON array of what this connector can do
+  lastTestedAt  DateTime?
+  lastError     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
+}
+
+model WebhookEndpoint {
+  id            String   @id @default(cuid())
+  userId        String
+  automationId  String
+  name          String
+  token         String   @unique   /// unique token for the webhook URL
+  secret        String?             /// optional HMAC secret for verification
+  isActive      Boolean  @default(true)
+  lastTriggeredAt DateTime?
+  triggerCount  Int      @default(0)
+  createdAt     DateTime @default(now())
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+}
+
+model CronJob {
+  id            String   @id @default(cuid())
+  userId        String
+  automationId  String
+  name          String
+  expression    String   /// cron expression (e.g., "0 */6 * * *")
+  timezone      String   @default("UTC")
+  isActive      Boolean  @default(true)
+  lastRun       DateTime?
+  nextRun       DateTime?
+  runCount      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  automation    Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+}
 
 model DocumentVersion {
   id          String   @id @default(cuid())
@@ -70,6 +140,7 @@ model KnowledgeChunk {
   sourceFile      String
   chunkIndex      Int
   metadata        String?       /// JSON with page numbers, section info, etc.
+  embedding       String?       /// JSON array of numbers (TF-IDF vector for semantic search)
   createdAt       DateTime      @default(now())
   knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
 
@@ -167,6 +238,8 @@ model Automation {
   updatedAt   DateTime         @updatedAt
   user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   executions  WorkflowExecution[]
+  webhooks    WebhookEndpoint[]
+  cronJobs    CronJob[]
 }
 
 model WorkflowExecution {
