@@ -20,6 +20,10 @@ import {
   ChevronRight,
   Sparkles,
   Command,
+  LayoutGrid,
+  Globe,
+  TerminalSquare,
+  Plug,
 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useWorkspaceStore, type ModuleId } from '@/store/workspace-store'
@@ -60,6 +64,10 @@ const navItems: NavItem[] = [
   { id: 'orchestrator', label: 'Orchestrateur', icon: Users },
   { id: 'timeline', label: 'Timeline', icon: Clock },
   { id: 'command-center', label: 'Command Center', icon: Monitor },
+  { id: 'canvas', label: 'Canvas', icon: LayoutGrid },
+  { id: 'browser', label: 'Browser Agent', icon: Globe },
+  { id: 'terminal', label: 'Terminal IA', icon: TerminalSquare },
+  { id: 'mcp', label: 'MCP', icon: Plug },
 ]
 
 function SidebarNavContent({

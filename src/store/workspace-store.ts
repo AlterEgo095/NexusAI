@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type ModuleId = 'home' | 'chat' | 'search' | 'design' | 'documents' | 'agents' | 'automation' | 'command-center' | 'memory' | 'timeline' | 'voice' | 'knowledge' | 'orchestrator'
+export type ModuleId = 'home' | 'chat' | 'search' | 'design' | 'documents' | 'agents' | 'automation' | 'command-center' | 'memory' | 'timeline' | 'voice' | 'knowledge' | 'orchestrator' | 'canvas' | 'browser' | 'terminal' | 'mcp'
 
 export interface Message {
   id: string

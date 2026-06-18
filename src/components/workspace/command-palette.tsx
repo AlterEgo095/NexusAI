@@ -19,6 +19,10 @@ import {
   Sun,
   Plus,
   Settings,
+  LayoutGrid,
+  Globe,
+  TerminalSquare,
+  Plug,
   type LucideIcon,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -47,6 +51,10 @@ const moduleItems: { id: ModuleId; label: string; icon: LucideIcon }[] = [
   { id: 'orchestrator', label: 'Orchestrateur', icon: Users },
   { id: 'timeline', label: 'Timeline', icon: Clock },
   { id: 'command-center', label: 'Command Center', icon: Monitor },
+  { id: 'canvas', label: 'Canvas', icon: LayoutGrid },
+  { id: 'browser', label: 'Browser Agent', icon: Globe },
+  { id: 'terminal', label: 'Terminal IA', icon: TerminalSquare },
+  { id: 'mcp', label: 'MCP', icon: Plug },
 ]
 
 export function CommandPalette() {

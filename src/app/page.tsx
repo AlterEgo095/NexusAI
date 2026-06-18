@@ -24,6 +24,10 @@ const MemoryModule = lazy(() => import('@/components/modules/memory-module'))
 const TimelineModule = lazy(() => import('@/components/modules/timeline-module'))
 const KnowledgeModule = lazy(() => import('@/components/modules/knowledge-module'))
 const OrchestratorModule = lazy(() => import('@/components/modules/orchestrator-module'))
+const CanvasModule = lazy(() => import('@/components/modules/canvas-module'))
+const BrowserModule = lazy(() => import('@/components/modules/browser-module'))
+const TerminalModule = lazy(() => import('@/components/modules/terminal-module'))
+const McpModule = lazy(() => import('@/components/modules/mcp-module'))
 
 function ModuleLoader() {
   return (
@@ -53,6 +57,10 @@ function ModuleRouter() {
     orchestrator: OrchestratorModule,
     timeline: TimelineModule,
     'command-center': CommandCenterModule,
+    canvas: CanvasModule,
+    browser: BrowserModule,
+    terminal: TerminalModule,
+    mcp: McpModule,
   }
 
   const ModuleComponent = modules[activeModule] || HomeModule
