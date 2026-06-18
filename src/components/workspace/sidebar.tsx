@@ -317,14 +317,21 @@ function MobileSidebar() {
           <Separator />
           <nav className="flex flex-1 flex-col gap-1 px-3 py-2">
             <ul className="flex flex-col gap-1">
-              {navItems.map((item) => {
+              {navItems.map((item, idx) => {
+                if (item.separator) {
+                  return (
+                    <li key={`sep-mobile-${idx}`} className="my-2">
+                      <Separator />
+                    </li>
+                  )
+                }
                 const isActive = activeModule === item.id
                 const Icon = item.icon
 
                 return (
                   <button
                     key={item.id}
-                    onClick={() => handleMobileNavigate(item.id)}
+                    onClick={() => handleMobileNavigate(item.id!)}
                     className={`
                       group relative flex w-full items-center gap-3 rounded-lg px-3 py-2.5
                       text-sm font-medium transition-all duration-200 outline-none
