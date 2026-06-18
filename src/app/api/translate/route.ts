@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from '@/lib/ai-provider'
 import { db } from '@/lib/db'
 import { ensureDefaultUser, logActivity, incrementUsage } from '@/lib/ensure-user'
 
@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await ensureDefaultUser()
-    const zai = await ZAI.create()
+    const provider = await getProvider()
 
     const systemPrompt = `You are a professional translator. Your task is to translate the given text from ${sourceLang === 'auto-detect' ? 'the detected language' : sourceLang} to ${targetLang}.
 
@@ -26,15 +26,10 @@ Rules:
 Respond with the translation in this exact JSON format (no markdown, no code fences):
 {"translatedText": "your translation here", "detectedSourceLang": "the detected or provided source language name"}`
 
-    const response = await zai.chat.completions.create({
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: text },
-      ],
-      thinking: { type: 'disabled' },
-    })
-
-    const raw = response.choices?.[0]?.message?.content || ''
+    const raw = await provider.chat([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: text },
+    ])
 
     // Parse the JSON response
     let translatedText = raw

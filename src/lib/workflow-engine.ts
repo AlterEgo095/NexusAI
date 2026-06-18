@@ -1,11 +1,12 @@
 import { executeTool, type ToolName, TOOL_DEFINITIONS } from './agent-tools'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from './ai-provider'
 
 /* ═══════════════════════════════════════════════════════════════════════
-   NexusAI Workflow Engine v2 — Full Automation Engine
+   NexusAI Workflow Engine v3 — Full Automation Engine
    Supports: trigger, action, condition, output, delay, loop,
              transform, http_request, notification
-   Features: shared variable context, template resolution, iteration tracking
+   Features: shared variable context, template resolution, iteration tracking,
+             REAL HTTP requests, conditional branching
    ═══════════════════════════════════════════════════════════════════════ */
 
 // ── Types ──
@@ -19,6 +20,8 @@ export interface WorkflowNode {
   label: string
   config: Record<string, unknown>
   position: { x: number; y: number }
+  /** IDs of next nodes for true/false branches (condition nodes) */
+  branches?: { true?: string; false?: string }
 }
 
 export interface StepLog {
@@ -26,16 +29,15 @@ export interface StepLog {
   label: string
   result: string
   durationMs: number
-  /** Variables read during this step */
   variableReads?: string[]
-  /** Variables written during this step with their new values */
   variableWrites?: Record<string, string>
-  /** Current iteration index (1-based), present in loop bodies */
   iteration?: number
-  /** Total iterations for the enclosing loop */
   loopTotal?: number
-  /** Boolean result for condition nodes */
   conditionResult?: boolean
+  /** HTTP-specific metadata */
+  httpStatus?: number
+  /** Node type for UI display */
+  nodeType?: string
 }
 
 export interface ExecutionResult {
@@ -43,6 +45,8 @@ export interface ExecutionResult {
   steps: StepLog[]
   error?: string
   totalDurationMs: number
+  /** Final variable state for debugging */
+  variables?: Record<string, string>
 }
 
 // ── VALID_TOOLS: all 18 tools from agent-tools.ts ──
@@ -56,23 +60,19 @@ const VALID_TOOLS = new Set<string>(
 class VariableContext {
   private store: Map<string, string> = new Map()
 
-  /** Set a variable and track the write */
   set(name: string, value: string): Record<string, string> {
     this.store.set(name, value)
     return { [name]: value }
   }
 
-  /** Get a variable value, returns empty string if missing */
   get(name: string): string {
     return this.store.get(name) || ''
   }
 
-  /** Check if variable exists */
   has(name: string): boolean {
     return this.store.has(name)
   }
 
-  /** Resolve all {{variable_name}} placeholders in a string */
   resolve(template: string): { resolved: string; reads: string[] } {
     const reads: string[] = []
     const resolved = template.replace(/\{\{(\w+)\}\}/g, (_match, varName: string) => {
@@ -82,7 +82,6 @@ class VariableContext {
     return { resolved, reads }
   }
 
-  /** Resolve all {{...}} in an arbitrary value (string, number, nested object) */
   resolveValue(value: unknown): { resolved: unknown; reads: string[] } {
     if (typeof value === 'string') {
       return this.resolve(value)
@@ -112,18 +111,9 @@ class VariableContext {
     return { resolved: value, reads: [] }
   }
 
-  /** Snapshot all variables for debugging */
   snapshot(): Record<string, string> {
     return Object.fromEntries(this.store)
   }
-}
-
-// ── ZAI Singleton ──
-
-let _zai: Awaited<ReturnType<typeof ZAI.create>> | null = null
-async function getZAI() {
-  if (!_zai) _zai = await ZAI.create()
-  return _zai
 }
 
 // ── Helpers ──
@@ -152,7 +142,6 @@ function mergeWrites(...objects: Record<string, string>[]): Record<string, strin
 
 // ── Node Executors ──
 
-/** trigger: manual activation — logs timestamp and initializes context */
 function executeTriggerNode(
   node: WorkflowNode,
   variables: VariableContext
@@ -166,7 +155,6 @@ function executeTriggerNode(
   }
 }
 
-/** action: execute a tool (all 18) or fallback to LLM */
 async function executeActionNode(
   node: WorkflowNode,
   variables: VariableContext
@@ -183,7 +171,6 @@ async function executeActionNode(
     const toolResult = await executeTool(toolName as ToolName, input)
     const result = toolResult.data
     const writes = variables.set('last_result', result)
-    // Also store tool-specific result variable
     const toolVar = variables.set(`tool_${toolName}_result`, result)
     return {
       result,
@@ -193,24 +180,20 @@ async function executeActionNode(
   }
 
   // Fallback: use LLM for unrecognized tools
-  const zai = await getZAI()
+  const provider = getProvider()
   const fallbackPrompt = String(node.config.query || node.config.input || `Execute: ${node.label}`)
   const { resolved: resolvedPrompt, reads: promptReads } = variables.resolve(fallbackPrompt)
   allReads.push(...promptReads)
 
-  const response = await zai.chat.completions.create({
-    messages: [
-      { role: 'system', content: 'You are a workflow automation assistant. Execute the requested task precisely and concisely.' },
-      { role: 'user', content: resolvedPrompt },
-    ],
-    thinking: { type: 'disabled' },
-  })
-  const result = response.choices?.[0]?.message?.content || 'Action executed.'
+  const response = await provider.chat([
+    { role: 'system', content: 'You are a workflow automation assistant. Execute the requested task precisely and concisely.' },
+    { role: 'user', content: resolvedPrompt },
+  ])
+  const result = response.content || 'Action executed.'
   const writes = variables.set('last_result', result)
   return { result, reads: allReads, writes }
 }
 
-/** condition: evaluate to true/false via LLM, store boolean result */
 async function executeConditionNode(
   node: WorkflowNode,
   variables: VariableContext
@@ -221,30 +204,26 @@ async function executeConditionNode(
   const allReads = [...exprReads]
   if (lastResultValue) allReads.push('last_result')
 
-  const zai = await getZAI()
-  const response = await zai.chat.completions.create({
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a condition evaluator. Evaluate the given condition against the provided context. ' +
-          'Respond with ONLY "true" or "false" — no explanation, no punctuation, no extra text.',
-      },
-      {
-        role: 'user',
-        content: `Condition: ${resolvedExpr}\n\nContext:\n${truncate(lastResultValue, 1000)}`,
-      },
-    ],
-    thinking: { type: 'disabled' },
-  })
-  const rawAnswer = (response.choices?.[0]?.message?.content || 'false').toLowerCase().trim()
+  const provider = getProvider()
+  const response = await provider.chat([
+    {
+      role: 'system',
+      content:
+        'You are a condition evaluator. Evaluate the given condition against the provided context. ' +
+        'Respond with ONLY "true" or "false" — no explanation, no punctuation, no extra text.',
+    },
+    {
+      role: 'user',
+      content: `Condition: ${resolvedExpr}\n\nContext:\n${truncate(lastResultValue, 1000)}`,
+    },
+  ])
+  const rawAnswer = (response.content || 'false').toLowerCase().trim()
   const conditionResult = rawAnswer === 'true' || rawAnswer.startsWith('true')
   const boolStr = String(conditionResult)
   const result = `Condition "${node.label}" → ${boolStr.toUpperCase()}`
 
   const writes1 = variables.set('condition_result', boolStr)
   const writes2 = variables.set('last_result', result)
-  // Allow user to specify a custom variable name
   const customVar = String(node.config.variable || '')
   const writes3 = customVar ? variables.set(customVar, boolStr) : {}
 
@@ -256,7 +235,6 @@ async function executeConditionNode(
   }
 }
 
-/** output: capture/emit data, optionally write to a named variable */
 function executeOutputNode(
   node: WorkflowNode,
   variables: VariableContext
@@ -264,7 +242,6 @@ function executeOutputNode(
   const rawTemplate = String(node.config.template || node.config.message || node.config.data || '')
   const { resolved, reads } = variables.resolve(rawTemplate)
 
-  // If no template, stringify the whole config (with variable resolution)
   let result: string
   let allReads = reads
   if (!rawTemplate) {
@@ -282,7 +259,6 @@ function executeOutputNode(
   return { result, reads: allReads, writes: mergeWrites(writes1, writes2) }
 }
 
-/** delay: wait for N milliseconds */
 function executeDelayNode(
   node: WorkflowNode,
   _variables: VariableContext
@@ -292,11 +268,9 @@ function executeDelayNode(
     result: `Delay: waiting ${duration}ms`,
     reads: [],
     writes: {},
-    // The actual delay is awaited by the caller
   }
 }
 
-/** loop: repeat the next N nodes M times */
 async function executeLoopNode(
   node: WorkflowNode,
   variables: VariableContext,
@@ -308,7 +282,6 @@ async function executeLoopNode(
   const repeatCount = Math.max(1, Math.min(20, Math.round(Number(node.config.repeatCount) || 1)))
   const loopVarName = String(node.config.variable || 'loop_index')
 
-  // Determine the nodes to repeat (nodes after the loop node)
   const startIndex = nodeIndex + 1
   const endIndex = Math.min(startIndex + repeatCount, allNodes.length)
   const loopBody = allNodes.slice(startIndex, endIndex)
@@ -337,7 +310,6 @@ async function executeLoopNode(
     for (const bodyNode of loopBody) {
       try {
         const execResult = await executeSingleNode(bodyNode, variables, allNodes, startIndex + loopBody.indexOf(bodyNode), recordStep)
-        // Enrich with loop metadata
         execResult.iteration = i
         execResult.loopTotal = iterations
         recordStep(execResult)
@@ -345,16 +317,14 @@ async function executeLoopNode(
         Object.assign(allWrites, execResult.variableWrites || {})
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Unknown error in loop body'
-        const loopStepLog: StepLog = {
+        recordStep({
           nodeId: bodyNode.id,
           label: bodyNode.label,
           result: `ERROR in loop iteration ${i}: ${msg}`,
           durationMs: Date.now() - stepStart,
           iteration: i,
           loopTotal: iterations,
-        }
-        recordStep(loopStepLog)
-        // Continue to next iteration instead of aborting the whole workflow
+        })
         break
       }
     }
@@ -369,11 +339,10 @@ async function executeLoopNode(
     result,
     reads: allReads,
     writes: allWrites,
-    nextIndex: endIndex, // Skip past the loop body nodes
+    nextIndex: endIndex,
   }
 }
 
-/** transform: use LLM to transform data */
 async function executeTransformNode(
   node: WorkflowNode,
   variables: VariableContext
@@ -384,23 +353,20 @@ async function executeTransformNode(
   const allReads = [...instrReads]
   if (lastResultValue) allReads.push('last_result')
 
-  const zai = await getZAI()
-  const response = await zai.chat.completions.create({
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a data transformation specialist. Apply the requested transformation to the input data. ' +
-          'Be precise and follow the instruction exactly. Return only the transformed result.',
-      },
-      {
-        role: 'user',
-        content: `Instruction: ${instruction}\n\nInput data:\n${truncate(lastResultValue, 3000)}`,
-      },
-    ],
-    thinking: { type: 'disabled' },
-  })
-  const result = response.choices?.[0]?.message?.content || 'Transformation completed (no output).'
+  const provider = getProvider()
+  const response = await provider.chat([
+    {
+      role: 'system',
+      content:
+        'You are a data transformation specialist. Apply the requested transformation to the input data. ' +
+        'Be precise and follow the instruction exactly. Return only the transformed result.',
+    },
+    {
+      role: 'user',
+      content: `Instruction: ${instruction}\n\nInput data:\n${truncate(lastResultValue, 3000)}`,
+    },
+  ])
+  const result = response.content || 'Transformation completed (no output).'
 
   const writes1 = variables.set('last_result', result)
   const writes2 = variables.set('transform_result', result)
@@ -414,15 +380,23 @@ async function executeTransformNode(
   }
 }
 
-/** http_request: simulate an HTTP request using LLM */
+/* ═══════════════════════════════════════════════════════════════════════
+   HTTP Request Node — REAL HTTP fetch (v3 upgrade)
+   Uses native fetch() for actual HTTP calls, with:
+   - Variable template resolution in URL, headers, body
+   - Timeout support (default 30s)
+   - Response body and status tracking
+   ═══════════════════════════════════════════════════════════════════════ */
+
 async function executeHttpRequestNode(
   node: WorkflowNode,
   variables: VariableContext
-): Promise<{ result: string; reads: string[]; writes: Record<string, string> }> {
+): Promise<{ result: string; reads: string[]; writes: Record<string, string>; httpStatus?: number }> {
   const rawUrl = String(node.config.url || '{{last_result}}')
   const rawMethod = String(node.config.method || 'GET').toUpperCase()
   const rawBody = String(node.config.body || node.config.data || '')
   const rawHeaders = String(node.config.headers || '')
+  const timeout = Math.min(60000, Math.max(1000, Number(node.config.timeout) || 30000))
 
   const { resolved: url, reads: urlReads } = variables.resolve(rawUrl)
   const { resolved: method, reads: methodReads } = variables.resolve(rawMethod)
@@ -433,52 +407,88 @@ async function executeHttpRequestNode(
   const lastResultValue = variables.get('last_result')
   if (lastResultValue) allReads.push('last_result')
 
-  const zai = await getZAI()
-  const response = await zai.chat.completions.create({
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are an HTTP request simulator. Given an HTTP request description, generate a realistic response ' +
-          'as if the request was actually made. Include a status code and response body in this exact format:\n\n' +
-          'Status: <code>\n' +
-          'Content-Type: <type>\n\n' +
-          '<response body>\n\n' +
-          'Make the response realistic and relevant to the URL and method.',
-      },
-      {
-        role: 'user',
-        content: [
-          `Method: ${method}`,
-          `URL: ${url}`,
-          headers ? `Headers: ${headers}` : '',
-          body ? `Body: ${body}` : '',
-          lastResultValue ? `Context from previous step: ${truncate(lastResultValue, 500)}` : '',
-        ]
-          .filter(Boolean)
-          .join('\n'),
-      },
-    ],
-    thinking: { type: 'disabled' },
-  })
+  if (!url) {
+    const msg = 'No URL provided for HTTP request node'
+    return { result: msg, reads: allReads, writes: {}, httpStatus: 0 }
+  }
 
-  const simulatedResponse = response.choices?.[0]?.message?.content || 'Status: 200\n\nNo response body.'
-  const result = `[HTTP ${method} ${url}]\n${simulatedResponse}`
+  // Build fetch options
+  const fetchOptions: RequestInit = {
+    method: method as RequestInit['method'],
+    headers: {},
+    signal: AbortSignal.timeout(timeout),
+  }
+
+  // Parse headers
+  if (headers) {
+    try {
+      const parsedHeaders = JSON.parse(headers)
+      if (typeof parsedHeaders === 'object' && parsedHeaders !== null) {
+        fetchOptions.headers = parsedHeaders
+      }
+    } catch {
+      // If not valid JSON, try comma-separated key:value
+      headers.split(',').forEach(h => {
+        const [key, ...valueParts] = h.split(':')
+        if (key && valueParts.length > 0) {
+          (fetchOptions.headers as Record<string, string>)[key.trim()] = valueParts.join(':').trim()
+        }
+      })
+    }
+  }
+
+  // Add body for POST/PUT/PATCH
+  if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+    fetchOptions.body = body
+    if (!(fetchOptions.headers as Record<string, string>)['Content-Type']) {
+      (fetchOptions.headers as Record<string, string>)['Content-Type'] = 'application/json'
+    }
+  }
+
+  let httpStatus = 0
+  let responseText = ''
+
+  try {
+    const response = await fetch(url, fetchOptions)
+    httpStatus = response.status
+
+    responseText = await response.text()
+
+    // Truncate large responses
+    if (responseText.length > 5000) {
+      responseText = responseText.substring(0, 5000) + `\n... (truncated, total ${responseText.length} chars)`
+    }
+
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'HTTP request failed'
+    const result = `[HTTP ${method} ${url}] ERROR: ${msg}`
+    variables.set('last_result', result)
+    variables.set('http_error', msg)
+    return {
+      result,
+      reads: allReads,
+      writes: { last_result: result, http_error: msg, http_status: '0' },
+      httpStatus: 0,
+    }
+  }
+
+  const result = `[HTTP ${method} ${url}]\nStatus: ${httpStatus}\n\n${responseText}`
 
   const writes1 = variables.set('last_result', result)
-  const writes2 = variables.set('http_status', '200')
-  const writes3 = variables.set('http_response', simulatedResponse)
+  const writes2 = variables.set('http_status', String(httpStatus))
+  const writes3 = variables.set('http_response', responseText)
+  const writes4 = variables.set('http_body', responseText)
   const outVar = String(node.config.variable || '')
-  const writes4 = outVar ? variables.set(outVar, result) : {}
+  const writes5 = outVar ? variables.set(outVar, result) : {}
 
   return {
     result,
     reads: allReads,
-    writes: mergeWrites(writes1, writes2, writes3, writes4),
+    writes: mergeWrites(writes1, writes2, writes3, writes4, writes5),
+    httpStatus,
   }
 }
 
-/** notification: generate a notification message */
 async function executeNotificationNode(
   node: WorkflowNode,
   variables: VariableContext
@@ -495,26 +505,23 @@ async function executeNotificationNode(
   const lastResultValue = variables.get('last_result')
   if (lastResultValue) allReads.push('last_result')
 
-  const zai = await getZAI()
-  const response = await zai.chat.completions.create({
-    messages: [
-      {
-        role: 'system',
-        content:
-          'You are a notification message formatter. Given a notification request, produce a polished, ' +
-          'professional notification message appropriate for the specified channel (email, slack, discord, ' +
-          'sms, webhook, or general). Format the output as a complete, ready-to-send notification. ' +
-          'Include a subject line for email, keep SMS short, use markdown for Slack/Discord.',
-      },
-      {
-        role: 'user',
-        content: `Channel: ${channel}\nTitle: ${title}\nRaw message: ${message}\n\nContext:\n${truncate(lastResultValue, 1000)}`,
-      },
-    ],
-    thinking: { type: 'disabled' },
-  })
+  const provider = getProvider()
+  const response = await provider.chat([
+    {
+      role: 'system',
+      content:
+        'You are a notification message formatter. Given a notification request, produce a polished, ' +
+        'professional notification message appropriate for the specified channel (email, slack, discord, ' +
+        'sms, webhook, or general). Format the output as a complete, ready-to-send notification. ' +
+        'Include a subject line for email, keep SMS short, use markdown for Slack/Discord.',
+    },
+    {
+      role: 'user',
+      content: `Channel: ${channel}\nTitle: ${title}\nRaw message: ${message}\n\nContext:\n${truncate(lastResultValue, 1000)}`,
+    },
+  ])
 
-  const formattedNotification = response.choices?.[0]?.message?.content || `Notification: ${message}`
+  const formattedNotification = response.content || `Notification: ${message}`
   const result = `[${channel.toUpperCase()}] ${title}\n${formattedNotification}`
 
   const writes1 = variables.set('last_result', result)
@@ -535,10 +542,9 @@ interface NodeExecutionResult extends StepLog {
   variableReads: string[]
   variableWrites: Record<string, string>
   conditionResult?: boolean
-  /** For loop nodes: the index to jump to after execution */
   nextIndex?: number
-  /** For delay nodes: the duration to wait */
   delayMs?: number
+  httpStatus?: number
 }
 
 async function executeSingleNode(
@@ -556,131 +562,111 @@ async function executeSingleNode(
     case 'trigger': {
       const { result, reads, writes } = executeTriggerNode(node, variables)
       return {
-        nodeId,
-        label,
-        result,
+        nodeId, label, result,
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        nodeType: 'trigger',
       }
     }
 
     case 'action': {
       const { result, reads, writes } = await executeActionNode(node, variables)
       return {
-        nodeId,
-        label,
-        result: truncate(result, 500),
+        nodeId, label, result: truncate(result, 500),
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        nodeType: 'action',
       }
     }
 
     case 'condition': {
       const { result, reads, writes, conditionResult } = await executeConditionNode(node, variables)
       return {
-        nodeId,
-        label,
-        result: truncate(result, 500),
+        nodeId, label, result: truncate(result, 500),
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
         conditionResult,
+        nodeType: 'condition',
       }
     }
 
     case 'output': {
       const { result, reads, writes } = executeOutputNode(node, variables)
       return {
-        nodeId,
-        label,
-        result: truncate(result, 500),
+        nodeId, label, result: truncate(result, 500),
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        nodeType: 'output',
       }
     }
 
     case 'delay': {
       const { result, reads, writes } = executeDelayNode(node, variables)
       const duration = Math.max(0, Math.min(60000, Number(node.config.duration) || 1000))
-      // Perform the actual wait
       await new Promise((resolve) => setTimeout(resolve, duration))
       return {
-        nodeId,
-        label,
+        nodeId, label,
         result: `Delay completed: ${duration}ms`,
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        nodeType: 'delay',
       }
     }
 
     case 'loop': {
       const loopResult = await executeLoopNode(node, variables, allNodes, nodeIndex, recordStep)
       return {
-        nodeId,
-        label,
-        result: truncate(loopResult.result, 500),
-        durationMs: 0, // Duration is tracked by individual steps inside the loop
-        variableReads: loopResult.reads,
-        variableWrites: loopResult.writes,
+        nodeId, label, result: truncate(loopResult.result, 500),
+        durationMs: 0,
+        variableReads: loopResult.reads, variableWrites: loopResult.writes,
         nextIndex: loopResult.nextIndex,
+        nodeType: 'loop',
       }
     }
 
     case 'transform': {
       const { result, reads, writes } = await executeTransformNode(node, variables)
       return {
-        nodeId,
-        label,
-        result: truncate(result, 500),
+        nodeId, label, result: truncate(result, 500),
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        nodeType: 'transform',
       }
     }
 
     case 'http_request': {
-      const { result, reads, writes } = await executeHttpRequestNode(node, variables)
+      const { result, reads, writes, httpStatus } = await executeHttpRequestNode(node, variables)
       return {
-        nodeId,
-        label,
-        result: truncate(result, 500),
+        nodeId, label, result: truncate(result, 500),
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        httpStatus,
+        nodeType: 'http_request',
       }
     }
 
     case 'notification': {
       const { result, reads, writes } = await executeNotificationNode(node, variables)
       return {
-        nodeId,
-        label,
-        result: truncate(result, 500),
+        nodeId, label, result: truncate(result, 500),
         durationMs: Date.now() - stepStart,
-        variableReads: reads,
-        variableWrites: writes,
+        variableReads: reads, variableWrites: writes,
+        nodeType: 'notification',
       }
     }
 
     default: {
-      // Unknown node type — skip gracefully
       return {
-        nodeId,
-        label,
+        nodeId, label,
         result: `Unknown node type "${String(node.type)}" — skipped`,
         durationMs: Date.now() - stepStart,
-        variableReads: [],
-        variableWrites: {},
+        variableReads: [], variableWrites: {},
       }
     }
   }
 }
 
-// ── Main Workflow Executor ──
+// ── Main Workflow Executor with Conditional Branching ──
 
 export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionResult> {
   const steps: StepLog[] = []
@@ -695,6 +681,10 @@ export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionR
   variables.set('loop_iteration', '0')
   variables.set('loop_total', '0')
 
+  // Build node index for branching
+  const nodeIndexMap = new Map<string, number>()
+  nodes.forEach((n, i) => nodeIndexMap.set(n.id, i))
+
   if (nodes.length === 0) {
     return {
       success: true,
@@ -708,16 +698,14 @@ export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionR
   }
 
   let i = 0
+  let skipConditionBranch = false // When true, skip the next node (used for false branches)
+
   while (i < nodes.length) {
     const node = nodes[i]
     try {
       const execResult = await executeSingleNode(node, variables, nodes, i, recordStep)
 
-      // Loop nodes are special: they manage their own step recording
-      // and tell us where to jump next
       if (node.type === 'loop') {
-        // The loop already recorded its inner steps via recordStep
-        // Now record the loop node itself
         steps.push({
           nodeId: execResult.nodeId,
           label: execResult.label,
@@ -725,11 +713,18 @@ export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionR
           durationMs: execResult.durationMs,
           variableReads: execResult.variableReads,
           variableWrites: execResult.variableWrites,
+          nodeType: 'loop',
         })
-        // Jump to after the loop body
         i = execResult.nextIndex ?? i + 1
-      } else {
-        // Regular node — record and advance
+        continue
+      }
+
+      // ── Conditional Branching ──
+      if (node.type === 'condition' && node.branches) {
+        const branchId = execResult.conditionResult
+          ? node.branches.true
+          : node.branches.false
+
         steps.push({
           nodeId: execResult.nodeId,
           label: execResult.label,
@@ -738,9 +733,33 @@ export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionR
           variableReads: execResult.variableReads,
           variableWrites: execResult.variableWrites,
           conditionResult: execResult.conditionResult,
+          nodeType: 'condition',
         })
+
+        if (branchId) {
+          const branchIndex = nodeIndexMap.get(branchId)
+          if (branchIndex !== undefined) {
+            i = branchIndex
+            continue
+          }
+        }
+        // No valid branch — continue to next node
         i++
+        continue
       }
+
+      steps.push({
+        nodeId: execResult.nodeId,
+        label: execResult.label,
+        result: execResult.result,
+        durationMs: execResult.durationMs,
+        variableReads: execResult.variableReads,
+        variableWrites: execResult.variableWrites,
+        conditionResult: execResult.conditionResult,
+        nodeType: execResult.nodeType,
+        httpStatus: execResult.httpStatus,
+      })
+      i++
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error'
       steps.push({
@@ -760,7 +779,7 @@ export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionR
     }
   }
 
-  // Store final workflow summary in variables
+  // Store final workflow summary
   variables.set('workflow_end_time', new Date().toISOString())
   variables.set('workflow_total_steps', String(steps.length))
   variables.set('workflow_success', 'true')
@@ -769,5 +788,6 @@ export async function executeWorkflow(nodes: WorkflowNode[]): Promise<ExecutionR
     success: true,
     steps,
     totalDurationMs: Date.now() - startTime,
+    variables: variables.snapshot(),
   }
 }

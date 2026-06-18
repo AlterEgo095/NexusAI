@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from '@/lib/ai-provider'
 import { db } from '@/lib/db'
 import { ensureDefaultUser, logActivity, incrementUsage } from '@/lib/ensure-user'
 
@@ -12,13 +12,10 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await ensureDefaultUser()
-    const zai = await ZAI.create()
+    const provider = await getProvider()
 
     // Perform web search
-    const searchResults = await zai.functions.invoke('web_search', {
-      query,
-      num: Math.min(num, 10),
-    })
+    const searchResults = await provider.webSearch(query, Math.min(num, 10))
 
     if (!searchResults || !Array.isArray(searchResults)) {
       await logActivity('search', 'Recherche effectuée', query)
@@ -36,8 +33,7 @@ export async function POST(request: NextRequest) {
 
     let summary = ''
     try {
-      const completion = await zai.chat.completions.create({
-        messages: [
+      const completion = await provider.chat([
           {
             role: 'system',
             content: 'Tu es un assistant de recherche IA. Résume les résultats de recherche de manière claire, concise et informative en français. Utilise des références numérotées [1], [2], etc. pour citer les sources. Fais des paragraphes courts et bien structurés.',
@@ -46,10 +42,8 @@ export async function POST(request: NextRequest) {
             role: 'user',
             content: `Recherche : "${query}"\n\nRésultats trouvés :\n${searchContext}\n\nFournis un résumé clair et concis de ces résultats en français, en citant les sources.`,
           },
-        ],
-        thinking: { type: 'disabled' },
-      })
-      summary = completion.choices?.[0]?.message?.content || ''
+        ])
+      summary = completion || ''
     } catch {
       summary = `Voici les résultats pour "${query}". Consultez les sources ci-dessous pour plus d'informations.`
     }

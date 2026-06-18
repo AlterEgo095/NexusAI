@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from '@/lib/ai-provider'
 import { db } from '@/lib/db'
 import { ensureDefaultUser, logActivity, incrementUsage } from '@/lib/ensure-user'
 
@@ -14,22 +14,19 @@ export async function POST(request: NextRequest) {
     const imageUrl = image.trim()
 
     const user = await ensureDefaultUser()
-    const zai = await ZAI.create()
+    const provider = await getProvider()
 
-    const response = await zai.chat.completions.createVision({
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: question },
-            { type: 'image_url', image_url: { url: imageUrl } },
-          ],
-        },
-      ],
-      thinking: { type: 'disabled' },
-    })
+    const response = await provider.chatVision([
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: question },
+          { type: 'image_url', image_url: { url: imageUrl } },
+        ],
+      },
+    ])
 
-    const analysis = response.choices?.[0]?.message?.content || 'No analysis generated.'
+    const analysis = response || 'No analysis generated.'
 
     await logActivity('image', 'Analyse d\'image', question.slice(0, 100), { imageLength: imageUrl.length })
     await incrementUsage('visionRequests' as 'chatRequests')

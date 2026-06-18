@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from '@/lib/ai-provider'
 import { db } from '@/lib/db'
 import { ensureDefaultUser, logActivity, incrementUsage } from '@/lib/ensure-user'
+import { saveImage, getImageBase64 } from '@/lib/storage'
 
 const SUPPORTED_SIZES = [
   '1024x1024',
@@ -29,37 +30,38 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await ensureDefaultUser()
-    const zai = await ZAI.create()
+    const provider = getProvider()
 
-    const response = await zai.images.generations.create({
-      prompt,
-      size,
-    })
+    const response = await provider.imageGeneration({ prompt, size })
 
-    const imageBase64 = response.data?.[0]?.base64
+    const imageBase64 = response.base64
 
     if (!imageBase64) {
       return NextResponse.json({ success: false, error: 'No image generated' }, { status: 500 })
     }
 
-    // Save to database
+    // Save image to disk, store path in DB
+    const filePath = await saveImage(imageBase64, 'img')
+
     const imageRecord = await db.imageGeneration.create({
       data: {
         userId: user.id,
         prompt,
         size,
         style: style || null,
-        imageData: imageBase64,
+        imageData: '',
+        filePath: `generated/${filePath}`,
       },
     })
 
-    await logActivity('image', 'Image générée', prompt.slice(0, 100), { size, style, imageId: imageRecord.id })
+    await logActivity('image', 'Image générée', prompt.slice(0, 100), { size, style, imageId: imageRecord.id, storage: 'disk' })
     await incrementUsage('imageRequests')
 
     return NextResponse.json({
       success: true,
       image: imageBase64,
       id: imageRecord.id,
+      filePath: `/generated/${filePath}`,
     })
   } catch (error) {
     console.error('Image API error:', error)

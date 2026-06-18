@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from '@/lib/ai-provider'
 import { ensureDefaultUser, logActivity } from '@/lib/ensure-user'
 
 export async function POST(request: NextRequest) {
@@ -32,9 +32,9 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await ensureDefaultUser()
-    const zai = await ZAI.create()
+    const provider = await getProvider()
 
-    const response = await zai.audio.asr.create({ file_base64: base64Audio })
+    const response = await provider.asr(base64Audio)
     const text = response.text || ''
 
     if (!text) {

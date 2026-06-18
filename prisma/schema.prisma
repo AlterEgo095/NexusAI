@@ -130,14 +130,15 @@ model SearchHistory {
 }
 
 model ImageGeneration {
-  id        String   @id @default(cuid())
-  userId    String
-  prompt    String
-  size      String   @default("1024x1024")
-  style     String?
-  imageData String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  prompt     String
+  size       String   @default("1024x1024")
+  style      String?
+  imageData  String   @default("") /// base64 for backward compat, empty if filePath is set
+  filePath   String?         /// path on disk (public/generated/filename.png)
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ActivityLog {
@@ -177,7 +178,8 @@ model VoiceGeneration {
   voice     String   @default("tongtong")
   speed     Float    @default(1.0)
   format    String   @default("wav")
-  audioData String
+  audioData String   @default("") /// base64 for backward compat, empty if filePath is set
+  filePath  String?        /// path on disk
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

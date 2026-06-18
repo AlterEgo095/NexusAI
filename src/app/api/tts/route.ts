@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { getProvider } from '@/lib/ai-provider'
 import { db } from '@/lib/db'
 import { ensureDefaultUser, logActivity, incrementUsage } from '@/lib/ensure-user'
 import { splitTextForTTS } from '@/lib/agent-tools'
@@ -15,12 +15,12 @@ export async function POST(request: NextRequest) {
     const clampedSpeed = Math.min(2.0, Math.max(0.5, Number(speed) || 1.0))
 
     const user = await ensureDefaultUser()
-    const zai = await ZAI.create()
+    const provider = await getProvider()
 
     const chunks = splitTextForTTS(text)
 
     // Generate audio for the first chunk
-    const response = await zai.audio.tts.create({
+    const response = await provider.tts({
       input: chunks[0],
       voice,
       speed: clampedSpeed,
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       stream: false,
     })
 
-    const arrayBuffer = await response.arrayBuffer()
+    const arrayBuffer = await response.arrayBuffer
     const buffer = Buffer.from(new Uint8Array(arrayBuffer))
     const base64Audio = buffer.toString('base64')
 

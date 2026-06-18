@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
 import { db } from "@/lib/db";
 import { ensureDefaultUser, logActivity, incrementUsage } from "@/lib/ensure-user";
+import { getProvider } from "@/lib/ai-provider";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { messages, systemPrompt, conversationId } = body;
+    const { messages, systemPrompt, conversationId, stream = false } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ success: false, error: "Messages array is required" }, { status: 400 });
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
 
     const user = await ensureDefaultUser();
 
-    // Save user message to DB if conversationId provided
+    // Save user message to DB
     if (conversationId) {
       await db.message.create({
         data: {
@@ -25,41 +25,81 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const zai = await ZAI.create();
-    const sdkMessages: Array<{ role: string; content: string }> = [];
-
+    const provider = getProvider();
+    const sdkMessages = [];
     if (systemPrompt) {
       sdkMessages.push({ role: "system" as const, content: systemPrompt });
     }
-
     for (const msg of messages) {
       sdkMessages.push({ role: msg.role, content: msg.content });
     }
 
-    const response = await zai.chat.completions.create({
-      messages: sdkMessages,
-      thinking: { type: "disabled" },
-    });
+    // ── SSE Streaming ──
+    if (stream) {
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream({
+        async start(controller) {
+          let fullContent = '';
+          try {
+            const gen = provider.chatStream(sdkMessages);
+            for await (const chunk of gen) {
+              fullContent += chunk;
+              const data = JSON.stringify({ type: 'chunk', content: chunk });
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+            }
 
-    const content = response.choices?.[0]?.message?.content ?? "";
+            // Save assistant message to DB
+            if (conversationId && fullContent) {
+              await db.message.create({
+                data: { conversationId, role: "assistant", content: fullContent },
+              });
+            }
 
-    // Save assistant message to DB
-    if (conversationId) {
-      await db.message.create({
-        data: {
-          conversationId,
-          role: "assistant",
-          content,
+            await logActivity("chat", "Message streamé", conversationId ? `Conversation: ${conversationId}` : undefined);
+            await incrementUsage("chatRequests");
+            await incrementUsage("tokensUsed", fullContent.length);
+
+            // Update conversation title if first message
+            if (conversationId && messages.length === 1) {
+              await db.conversation.update({
+                where: { id: conversationId },
+                data: { title: messages[0].content.slice(0, 60) + (messages[0].content.length > 60 ? "..." : "") },
+              });
+            }
+
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', content: fullContent })}\n\n`));
+            controller.close();
+          } catch (error) {
+            const msg = error instanceof Error ? error.message : "Stream error";
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: msg })}\n\n`));
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
         },
       });
     }
 
-    // Log activity and usage
+    // ── Non-streaming (original) ──
+    const response = await provider.chat(sdkMessages);
+    const content = response.content;
+
+    if (conversationId && content) {
+      await db.message.create({
+        data: { conversationId, role: "assistant", content },
+      });
+    }
+
     await logActivity("chat", "Message envoyé", conversationId ? `Conversation: ${conversationId}` : undefined);
     await incrementUsage("chatRequests");
     await incrementUsage("tokensUsed", content.length);
 
-    // Update conversation title if first message
     if (conversationId && messages.length === 1) {
       await db.conversation.update({
         where: { id: conversationId },

@@ -27,19 +27,16 @@ export async function POST(request: NextRequest) {
 
     // If AI generation is requested, generate content via LLM
     if (generateWithAI && aiPrompt) {
-      const ZAI = (await import('z-ai-web-dev-sdk')).default;
-      const zai = await ZAI.create();
-      const response = await zai.chat.completions.create({
-        messages: [
+      const { getProvider } = await import('@/lib/ai-provider');
+      const provider = await getProvider();
+      const response = await provider.chat([
           {
             role: "system",
             content: "Tu es un assistant de rédaction professionnel. Génère du contenu structuré en français. Utilise le formatage markdown. Sois concis et professionnel.",
           },
           { role: "user", content: aiPrompt },
-        ],
-        thinking: { type: "disabled" },
-      });
-      docContent = response.choices?.[0]?.message?.content || docContent;
+        ]);
+      docContent = response || docContent;
     }
 
     const document = await db.document.create({
