@@ -1,0 +1,109 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  avatar    String?
+  role      String   @default("user")
+  credits   Int      @default(1000)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  conversations Conversation[]
+  agents      CustomAgent[]
+  documents   Document[]
+  automations Automation[]
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String   @default("Nouvelle conversation")
+  model     String   @default("default")
+  messages  Message[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  thinking       String?
+  createdAt      DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model CustomAgent {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  role        String
+  systemPrompt String
+  tools       String   @default("[]")
+  avatar      String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  type      String   @default("markdown")
+  content   String
+  status    String   @default("draft")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model Automation {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  trigger     String   @default("manual")
+  workflow    String
+  isActive    Boolean  @default(false)
+  lastRun     DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model SearchHistory {
+  id        String   @id @default(cuid())
+  query     String
+  results   String?
+  summary   String?
+  createdAt DateTime @default(now())
+}
+
+model ImageGeneration {
+  id        String   @id @default(cuid())
+  prompt    String
+  size      String   @default("1024x1024")
+  imageData String
+  createdAt DateTime @default(now())
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  type      String
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+}
