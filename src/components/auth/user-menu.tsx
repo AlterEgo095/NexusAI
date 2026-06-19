@@ -9,7 +9,6 @@ import {
   Settings,
   UserCircle,
   ChevronDown,
-  ShieldCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -87,8 +86,6 @@ function AuthenticatedMenu({
   userRole?: string
   onNavigate?: (module: string) => void
 }) {
-  const isAdmin = userRole === 'admin' || userRole === 'superadmin'
-
   const handleSignOut = useCallback(async () => {
     await signOut({ redirect: false })
     toast.success('Déconnexion réussie', {
@@ -171,16 +168,6 @@ function AuthenticatedMenu({
             <Settings className="size-4 text-muted-foreground" />
             <span className="text-sm">Préférences</span>
           </DropdownMenuItem>
-
-          {isAdmin && (
-            <DropdownMenuItem
-              onClick={() => window.location.href = '/admin12345'}
-              className="gap-2.5 px-2.5 py-2 rounded-lg cursor-pointer focus:bg-accent/50 text-amber-600 dark:text-amber-400"
-            >
-              <ShieldCheck className="size-4" />
-              <span className="text-sm font-medium">Panneau Admin</span>
-            </DropdownMenuItem>
-          )}
         </DropdownMenuGroup>
 
         <DropdownMenuSeparator className="bg-border/50" />

@@ -23,7 +23,6 @@ import {
   Globe,
   TerminalSquare,
   Plug,
-  Shield,
   Store,
   Network,
   Link2,
@@ -63,7 +62,6 @@ const moduleItems: { id: ModuleId; label: string; icon: LucideIcon }[] = [
   { id: 'composer', label: 'Composer', icon: Network },
   { id: 'connectors', label: 'Connecteurs', icon: Link2 },
   { id: 'settings', label: 'Paramètres', icon: Settings },
-  { id: 'admin', label: 'Admin', icon: Shield },
 ]
 
 export function CommandPalette() {

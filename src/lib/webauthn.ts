@@ -94,7 +94,7 @@ export async function beginRegistration(userId: string) {
   const options = await server.generateRegistrationOptions({
     rpName: RP_NAME,
     rpID: RP_ID,
-    userID: user.id,
+    userID: new TextEncoder().encode(user.id),
     userName: user.email,
     userDisplayName: user.name,
     excludeCredentials: excludeList.map((id) => ({

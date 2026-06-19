@@ -409,17 +409,18 @@ export default function AdminPage() {
 
               <div className="space-y-2">
                 <label htmlFor="user-id" className="text-sm font-medium">
-                  User ID
+                  Email ou User ID
                 </label>
                 <Input
                   id="user-id"
-                  placeholder="Enter the admin user ID (cuid)"
+                  type="email"
+                  placeholder="admin@nexusai.local ou ID utilisateur"
                   value={setupUserId}
                   onChange={(e) => setSetupUserId(e.target.value)}
                   disabled={isProcessing}
                 />
                 <p className="text-xs text-muted-foreground">
-                  The database user ID that will own this passkey.
+                  L'email ou l'identifiant de l'utilisateur admin qui possèdera cette passkey.
                 </p>
               </div>
 

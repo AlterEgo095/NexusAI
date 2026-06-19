@@ -24,3 +24,26 @@ Stage Summary:
 - Admin a une gestion complète: utilisateurs, paramètres, marketplace, settings custom, audit sécurité
 - Ajouté: lien "Panneau Admin" visible uniquement pour admin/superadmin dans le menu utilisateur
 - Nettoyé: ModuleId ne contient plus le module `admin` inutilisé
+
+---
+Task ID: 2
+Agent: Main
+Task: Corriger le setup WebAuthn + supprimer toutes refs admin côté utilisateur
+
+Work Log:
+- Analysé le screenshot VPS: erreur "Invalid setup token" sur `/admin12345` car ADMIN_SETUP_TOKEN n'était pas dans .env sur VPS
+- Corrigé `@simplewebauthn/server` erreur: userID string → Uint8Array via TextEncoder
+- Amélioré le endpoint `/api/webauthn/register/begin` pour accepter un email (résolution auto vers user ID) + vérification du rôle admin
+- Ajouté message d'erreur clair si ADMIN_SETUP_TOKEN n'est pas configuré sur le serveur
+- Mis à jour le formulaire de setup: champ "Email ou User ID" avec placeholder en français
+- Supprimé lien "Panneau Admin" du menu utilisateur
+- Supprimé lien "Administration" du footer de la landing page
+- Supprimé entrée "Admin" de la command palette + import Shield inutilisé
+- Nettoyé le type ModuleId (admin retiré)
+- Ajouté ADMIN_SETUP_TOKEN dans .env local pour les tests
+- Vérification finale: 0 refs admin dans landing, page.tsx, user-menu, command-palette, sidebar
+
+Stage Summary:
+- WebAuthn setup fonctionne: token validé, email résolu, options de registration générées
+- Aucune référence admin dans le code utilisateur (landing, workspace, sidebar, menu)
+- Lint: 0 erreurs, compilation: pages 200, pas d'erreurs runtime

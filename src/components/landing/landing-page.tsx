@@ -530,12 +530,9 @@ function Footer() {
           <span>© 2026 NexusAI — AENews Platform</span>
         </div>
         <div className="flex items-center gap-4 text-sm">
-          <a
-            href="/?mod=settings"
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Administration
-          </a>
+          <span className="text-muted-foreground">
+            Powered by AENews
+          </span>
         </div>
       </div>
     </footer>
