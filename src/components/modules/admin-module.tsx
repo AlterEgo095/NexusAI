@@ -38,6 +38,10 @@ import {
   Globe,
   Sparkles,
   Filter,
+  ScrollText,
+  Megaphone,
+  Lock,
+  Unlock,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from '@/components/ui/card'
@@ -80,6 +84,12 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+
+// Sub-components (default exports)
+import UserDetailDialog from './admin/user-detail-dialog'
+import ActivityLogsTab from './admin/activity-logs-tab'
+import AnnouncementsSection from './admin/announcements-section'
+import SystemHealth from './admin/system-health'
 
 /* ═══════════════════════════════════════════════════════════════════════
    Types
@@ -391,6 +401,10 @@ export default function AdminModule() {
   const [customDialogLoading, setCustomDialogLoading] = useState(false)
   const [customDeleteDialog, setCustomDeleteDialog] = useState<{ open: boolean; setting?: SettingItem }>({ open: false })
   const [customDeleteLoading, setCustomDeleteLoading] = useState(false)
+
+  // ─── User detail dialog ───
+  const [userDetailOpen, setUserDetailOpen] = useState(false)
+  const [userDetailId, setUserDetailId] = useState<string | null>(null)
 
   /* ═══════════════════════════════════════════════════════════════════
      Fetch functions
@@ -919,6 +933,14 @@ export default function AdminModule() {
               <Settings className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Système</span>
             </TabsTrigger>
+            <TabsTrigger value="activity" className="gap-1.5 text-xs">
+              <ScrollText className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Activité</span>
+            </TabsTrigger>
+            <TabsTrigger value="announcements" className="gap-1.5 text-xs">
+              <Megaphone className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Annonces</span>
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -1251,6 +1273,21 @@ export default function AdminModule() {
                                     <Coins className="h-3.5 w-3.5" />
                                     Réinitialiser crédits
                                   </DropdownMenuItem>
+                                  <DropdownMenuItem className="gap-2 text-xs cursor-pointer" onClick={() => { setUserDetailId(u.id); setUserDetailOpen(true) }}>
+                                    <Eye className="h-3.5 w-3.5" />
+                                    Voir le détail
+                                  </DropdownMenuItem>
+                                  {u.lockedUntil && new Date(u.lockedUntil) > new Date() ? (
+                                    <DropdownMenuItem className="gap-2 text-xs cursor-pointer text-emerald-600" onClick={() => { adminFetch({ action: 'unlock-user', userId: u.id }).then(d => { if (d.success) { toast.success('Compte déverrouillé'); fetchUsers(page, searchQuery) } }) }}>
+                                      <Unlock className="h-3.5 w-3.5" />
+                                      Déverrouiller
+                                    </DropdownMenuItem>
+                                  ) : (
+                                    <DropdownMenuItem className="gap-2 text-xs cursor-pointer text-amber-600" onClick={() => { adminFetch({ action: 'lock-user', userId: u.id }).then(d => { if (d.success) { toast.success('Compte verrouillé 24h'); fetchUsers(page, searchQuery) } }) }}>
+                                      <Lock className="h-3.5 w-3.5" />
+                                      Verrouiller 24h
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     className="gap-2 text-xs text-red-600 dark:text-red-400 cursor-pointer focus:text-red-600 focus:bg-red-500/10"
@@ -1620,9 +1657,12 @@ export default function AdminModule() {
               animate="show"
               exit="exit"
               transition={{ duration: 0.25 }}
-              className="space-y-4"
+              className="space-y-6"
             >
-              {/* ─── Header ─── */}
+              {/* ─── System Health ─── */}
+              <SystemHealth />
+
+              {/* ─── Custom Settings ─── */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
                   <Settings className="h-4 w-4 text-emerald-500" />
@@ -1712,7 +1752,30 @@ export default function AdminModule() {
             </motion.div>
           </AnimatePresence>
         </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════
+           Tab 6: Activité Plateforme
+           ═══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="activity" className="mt-4">
+          <ActivityLogsTab />
+        </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════
+           Tab 7: Annonces
+           ═══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="announcements" className="mt-4">
+          <AnnouncementsSection />
+        </TabsContent>
       </Tabs>
+
+      {/* ═══════════════════════════════════════════════════════════════
+         User Detail Dialog
+         ═══════════════════════════════════════════════════════════════ */}
+      <UserDetailDialog
+        open={userDetailOpen}
+        onOpenChange={(open) => { setUserDetailOpen(open); if (!open) setUserDetailId(null) }}
+        userId={userDetailId}
+      />
 
       {/* ═══════════════════════════════════════════════════════════════
          Credits Dialog

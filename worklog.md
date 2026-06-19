@@ -47,3 +47,24 @@ Stage Summary:
 - WebAuthn setup fonctionne: token validé, email résolu, options de registration générées
 - Aucune référence admin dans le code utilisateur (landing, workspace, sidebar, menu)
 - Lint: 0 erreurs, compilation: pages 200, pas d'erreurs runtime
+
+---
+Task ID: 3
+Agent: Main + subagents
+Task: Ajouter toutes les fonctionnalités manquantes au dashboard admin
+
+Work Log:
+- Analyse des manquants: détail utilisateur, logs activité plateforme, annonces, santé système, lock/unlock comptes, audit logging
+- Ajout du modèle PlatformAnnouncement dans Prisma + db push
+- Backend: 8 nouvelles actions dans /api/admin (user-detail, activity-logs, list-announcements, create-announcement, toggle-announcement, delete-announcement, system-info, lock-user, unlock-user)
+- Backend: Ajout du logging des actions admin (update-user, delete-user, reset-credits, create-announcement, lock-user, unlock-user) via logSecurityEvent
+- Frontend: 4 nouveaux composants (user-detail-dialog, activity-logs-tab, announcements-section, system-health)
+- Frontend: 2 nouveaux onglets (Activité, Annonces) + SystemHealth intégré dans l'onglet Système
+- Frontend: Actions lock/unlock + voir détail dans le menu utilisateur
+- Correction: icône Activity→ScrollText, imports default vs named exports
+- Lint: 0 erreurs, Pages: 200/200, API: correctement protégées (401 sans auth)
+
+Stage Summary:
+- Dashboard admin passe de 5 à 7 onglets: Dashboard, Utilisateurs, Configuration, Marketplace, Système (+santé), Activité, Annonces
+- Gestion complète: utilisateurs (lock/unlock/détail), contenu (logs activité), communication (annonces), système (health DB)
+- Toutes les actions admin sont tracées dans SecurityAuditLog
