@@ -1,5 +1,11 @@
 # ═══════════════════════════════════════════════════════════════════════
-# NexusAI — Docker Compose Production
+# NexusAI — Docker Compose (alternative to PM2 bare-metal deploy)
+#
+# This is an ALTERNATIVE deployment method using Docker.
+# For the recommended VPS deployment, use: bash deploy.sh nexus.aenews.net
+#
+# If using Docker, pair with Nginx + certbot on the host for SSL.
+# The container only exposes port 3000 internally.
 # ═══════════════════════════════════════════════════════════════════════
 
 services:
@@ -24,26 +30,8 @@ services:
         max-size: "50m"
         max-file: "5"
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: nexusai-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - nexusai
-
 volumes:
   nexusai-data:
     driver: local
   nexusai-generated:
-    driver: local
-  caddy-data:
-    driver: local
-  caddy-config:
     driver: local

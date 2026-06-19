@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════
-# NexusAI — PM2 Configuration (alternative to Docker)
+# NexusAI — PM2 Process Configuration
 # Usage: pm2 start ecosystem.config.js
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -7,9 +7,8 @@ module.exports = {
   apps: [
     {
       name: 'nexusai',
-      script: 'node_modules/.bin/next',
-      args: 'start -p 3000',
-      cwd: '/home/nexusai/app',
+      script: '.next/standalone/server.js',
+      cwd: '/opt/nexusai',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -20,13 +19,12 @@ module.exports = {
         PORT: 3000,
         HOSTNAME: '0.0.0.0',
       },
-      env_production: {
-        NODE_ENV: 'production',
-      },
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      error_file: '/home/nexusai/logs/error.log',
-      out_file: '/home/nexusai/logs/out.log',
+      error_file: '/var/log/nexusai/error.log',
+      out_file: '/var/log/nexusai/out.log',
       merge_logs: true,
+      // Increase memory for build/deploy operations
+      node_args: '--max-old-space-size=2048',
     },
   ],
 };

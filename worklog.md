@@ -767,3 +767,26 @@ Stage Summary:
 - Platform settings (name, language, credits, features) configurable from admin
 - AI provider reads configuration from DB with environment variable fallback
 - All data is DB-backed, no hardcoded frontend configuration
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Push admin corrections + prepare VPS deployment files (Nginx + certbot, /opt, nexus.aenews.net)
+
+Work Log:
+- Verified git status: all changes already committed and pushed
+- Read existing deployment files (Caddy-based from previous session)
+- Removed Caddy-based files: Caddyfile, deploy-bare.sh
+- Created nexus.conf: Nginx reverse proxy config for nexus.aenews.net with SSL hardening, WebSocket support, static caching
+- Created deploy.sh: Smart VPS deployment script that auto-examines environment (OS, services, /opt contents, ports), installs prerequisites (Node 20, Bun, PM2, Nginx, certbot), clones to /opt/nexusai, builds with standalone output, configures Nginx, sets up certbot SSL with auto-renewal cron
+- Updated ecosystem.config.js: PM2 config pointing to /opt/nexusai, logs to /var/log/nexusai
+- Updated .env.production: Correct DATABASE_URL path for /opt/nexusai/data/
+- Updated .env.example: Clean template
+- Updated docker-compose.yml: Removed Caddy service, kept as Docker alternative
+
+Stage Summary:
+- Deployment stack: Nginx + Certbot + PM2 + Bun on /opt/nexusai
+- Domain: nexus.aenews.net with Let's Encrypt SSL
+- Deploy command: `bash deploy.sh` (run as root on VPS)
+- Files created/updated: nexus.conf, deploy.sh, ecosystem.config.js, .env.production, .env.example, docker-compose.yml
+- Files removed: Caddyfile, deploy-bare.sh
