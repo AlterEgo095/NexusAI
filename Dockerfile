@@ -1,54 +1,57 @@
-FROM node:22-slim AS base
+# ═══════════════════════════════════════════════════════════════════════
+# NexusAI — Multi-stage Docker Production Build
+# ═══════════════════════════════════════════════════════════════════════
+FROM oven/bun:1 AS base
 
-# Install bun
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl openssl && \
-    curl -fsSL https://bun.sh/install | bash && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-ENV PATH="/root/.bun/bin:$PATH"
+# ── Stage 1: Dependencies ──
+FROM base AS deps
 WORKDIR /app
-
-# Install dependencies
 COPY package.json bun.lock* ./
-RUN bun install --frozen-lockfile 2>/dev/null || bun install
+RUN bun install --frozen-lockfile --production=false
 
-# Copy source
+# ── Stage 2: Build ──
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generate Prisma client
-RUN npx prisma generate
+# Enable standalone output for production build
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
 
-# Build Next.js
-RUN bun run build
+# Temporarily set standalone for build only
+RUN cp next.config.mjs next.config.mjs.bak && \
+    sed -i 's|const nextConfig = {|const nextConfig = {\n  output: "standalone",|' next.config.mjs
 
-# Production stage
-FROM node:22-slim AS runner
+RUN bun run db:generate && \
+    bun run build
 
+# ── Stage 3: Production ──
+FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# Copy standalone output
-COPY --from=base /app/.next/standalone ./
-COPY --from=base /app/.next/static ./.next/static
-COPY --from=base /app/public ./public
+# Copy standalone build
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
 
-# Copy Prisma schema for migrations
-COPY --from=base /app/prisma ./prisma
-COPY --from=base /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=base /app/node_modules/@prisma ./node_modules/@prisma
-
-# Create db directory
-RUN mkdir -p /app/db
+# Create data directory for SQLite DB
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
 
 USER nextjs
 
 EXPOSE 3000
 
-CMD ["node", "server.js"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:3000/api/stats || exit 1
+
+CMD ["bun", "server.js"]

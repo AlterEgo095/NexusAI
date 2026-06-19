@@ -64,8 +64,9 @@ server.log
 .zscripts/
 agent-ctx/
 
-# Env example (keep this)
+# Env files to keep
 !.env.example
+!.env.production
 
 # Skills directory
 /skills/

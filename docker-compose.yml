@@ -1,17 +1,49 @@
+# ═══════════════════════════════════════════════════════════════════════
+# NexusAI — Docker Compose Production
+# ═══════════════════════════════════════════════════════════════════════
+
 services:
   nexusai:
-    build: .
-    container_name: nexusai
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nexusai-app
     restart: unless-stopped
     ports:
-      - "3000:3000"
-    environment:
-      - DATABASE_URL=file:/app/db/custom.db
-      - NODE_ENV=production
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env.local
     volumes:
-      - nexusai-db:/app/db
-      - nexusai-uploads:/app/public/uploads
+      - nexusai-data:/app/data
+      - nexusai-generated:/app/public/generated
+    mem_limit: 2g
+    cpus: 2
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: nexusai-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - nexusai
 
 volumes:
-  nexusai-db:
-  nexusai-uploads:
+  nexusai-data:
+    driver: local
+  nexusai-generated:
+    driver: local
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
