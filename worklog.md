@@ -824,3 +824,35 @@ Stage Summary:
 - Stack: Nginx (wildcard SSL) → PM2 (Node.js) → Next.js standalone on port 3000
 - All files pushed to GitHub (3 commits total)
 - PM2 process saved for persistence across reboots
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Complete auth security overhaul — audit, WebAuthn, hardening, deploy
+
+Work Log:
+- VLM analysis of uploaded screenshot (SSL cert warning page)
+- Comprehensive security audit via subagent (15+ files, 7 critical, 6 high, 8 medium findings)
+- P0 fixes: ensure-user.ts rewrite (no fallbacks), auth.ts (no hardcoded secret, account lockout, 7d sessions, secure cookies), settings password fix (SHA-256 → bcrypt), avatar truncation fix
+- Created middleware.ts for API rate limiting
+- Added auth rate limits (5/min register, 10/min login)
+- Installed @simplewebauthn/server + @simplewebauthn/browser
+- Created WebAuthnCredential model in Prisma
+- Created webauthn.ts server library (challenge store, registration, authentication)
+- Created 6 WebAuthn API endpoints (status, register/begin, register/finish, authenticate/begin, authenticate/finish, credentials)
+- Created /admin12345/page.tsx (setup phase, login phase, authenticated phase)
+- Removed admin from main page sidebar
+- Added CSP header to Nginx config
+- Created SecurityAuditLog model
+- Created security-audit.ts logger utility
+- Integrated audit logging into auth.ts and WebAuthn routes
+- Created /api/admin/security-audit endpoint
+- Added Nginx rate limiting for /admin12345 and /api/auth/
+- Deployed to VPS: pull, install, db:push, build, PM2 restart, Nginx reload
+- Generated ADMIN_SETUP_TOKEN for first passkey registration
+
+Stage Summary:
+- 22 files changed, 1598 insertions, 113 deletions
+- 3 commits pushed to GitHub
+- VPS deployed and verified: main page HTTP 200, /admin12345 HTTP 200
+- Admin SETUP_TOKEN: ZqTYJAF1C0vNoJux2bjA4XdB2_ueP6C0-SlKwjnx1OY
