@@ -2,6 +2,7 @@
 
 import { lazy, Suspense, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useSession } from 'next-auth/react'
 import { Menu, Command, Loader2 } from 'lucide-react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useWorkspaceStore } from '@/store/workspace-store'
@@ -10,6 +11,7 @@ import { CommandPalette } from '@/components/workspace/command-palette'
 import { ThemeToggle } from '@/components/workspace/theme-toggle'
 import { UserMenu } from '@/components/auth/user-menu'
 import { AuthDialogs } from '@/components/auth/auth-dialogs'
+import { LandingPage } from '@/components/landing/landing-page'
 import { Button } from '@/components/ui/button'
 
 // Lazy load all modules for code splitting
@@ -139,7 +141,42 @@ function TopBar() {
   )
 }
 
-export default function WorkspacePage() {
+/* ─── Loading state ─── */
+function FullPageLoader() {
+  return (
+    <div className="min-h-screen gradient-bg flex items-center justify-center">
+      <div className="flex flex-col items-center gap-4">
+        <Loader2 className="size-8 animate-spin text-primary/60" />
+        <p className="text-sm text-muted-foreground">Chargement...</p>
+      </div>
+    </div>
+  )
+}
+
+/* ─── Unauthenticated view (Landing + Auth dialogs) ─── */
+function UnauthenticatedView() {
+  const [loginOpen, setLoginOpen] = useState(false)
+  const [registerOpen, setRegisterOpen] = useState(false)
+
+  return (
+    <>
+      <LandingPage
+        onLogin={() => setLoginOpen(true)}
+        onRegister={() => setRegisterOpen(true)}
+      />
+      <AuthDialogs
+        loginOpen={loginOpen}
+        setLoginOpen={setLoginOpen}
+        registerOpen={registerOpen}
+        setRegisterOpen={setRegisterOpen}
+        onSuccess={() => {}}
+      />
+    </>
+  )
+}
+
+/* ─── Authenticated view (Workspace) ─── */
+function WorkspacePage() {
   const sidebarCollapsed = useWorkspaceStore((s) => s.sidebarCollapsed)
   const isMobile = useIsMobile()
 
@@ -162,4 +199,19 @@ export default function WorkspacePage() {
       </div>
     </div>
   )
+}
+
+/* ─── Root page with session-based routing ─── */
+export default function Page() {
+  const { data: session, status } = useSession()
+
+  if (status === 'loading') {
+    return <FullPageLoader />
+  }
+
+  if (session) {
+    return <WorkspacePage />
+  }
+
+  return <UnauthenticatedView />
 }
