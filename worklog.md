@@ -790,3 +790,37 @@ Stage Summary:
 - Deploy command: `bash deploy.sh` (run as root on VPS)
 - Files created/updated: nexus.conf, deploy.sh, ecosystem.config.js, .env.production, .env.example, docker-compose.yml
 - Files removed: Caddyfile, deploy-bare.sh
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: SSH into VPS, examine deployment patterns, adapt files, deploy NexusAI
+
+Work Log:
+- Installed paramiko via pip for SSH access from sandbox
+- Connected to 95.111.226.63 as aenews (passwordless sudo confirmed)
+- Examined VPS: Ubuntu 24.04, 11GB RAM, 6 cores, 25+ Nginx sites, 33+ Docker containers, 4 PM2 processes
+- Discovered SSL pattern: wildcard cert at /etc/nginx/ssl/aenews.net.crt (covers *.aenews.net until 2028)
+- Discovered Nginx pattern: upstream + rate limiting + hardened headers (from command.aenews.net)
+- Discovered PM2 pattern: standalone server.js via Node.js (from site-builder)
+- Port 3000 confirmed free
+- Rewrote nexus.conf: rate limiting, wildcard SSL, WebSocket, API timeouts, security headers
+- Rewrote deploy.sh: no certbot, Bun for build, PM2 for runtime, simplified for VPS
+- Fixed ecosystem.config.js: removed JS-invalid # comments
+- Deployed to VPS via SSH:
+  - Installed Bun 1.3.14
+  - Cloned to /opt/nexusai
+  - bun install (11 packages)
+  - Fixed .env files via SFTP (Prisma reads .env not .env.local)
+  - Database pushed (SQLite at /opt/nexusai/data/nexusai.db)
+  - Built standalone (NODE_ENV=production, temporarily enabled output: "standalone")
+  - PM2 started: nexusai process (server.js in .next/standalone)
+  - Nginx configured: nexus.conf copied, site enabled, nginx -t passed, reloaded
+  - pm2 save for persistence
+- Verified: HTTP/2 200, HSTS, security headers, API stats responding, page rendering (59KB HTML)
+
+Stage Summary:
+- NexusAI deployed and running at https://nexus.aenews.net
+- Stack: Nginx (wildcard SSL) → PM2 (Node.js) → Next.js standalone on port 3000
+- All files pushed to GitHub (3 commits total)
+- PM2 process saved for persistence across reboots
