@@ -1,8 +1,3 @@
-# ═══════════════════════════════════════════════════════════════════════
-# NexusAI — PM2 Process Configuration
-# Matches site-builder pattern: Node.js + standalone server.js
-# ═══════════════════════════════════════════════════════════════════════
-
 module.exports = {
   apps: [
     {
