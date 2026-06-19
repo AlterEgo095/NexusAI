@@ -25,7 +25,6 @@ import {
   TerminalSquare,
   Plug,
   Settings,
-  Shield,
   Store,
   Network,
   Link2,
@@ -79,7 +78,6 @@ const navItems: NavItem[] = [
   { id: 'connectors', label: 'Connecteurs', icon: Link2 },
   { separator: true },
   { id: 'settings', label: 'Paramètres', icon: Settings },
-  { id: 'admin', label: 'Admin', icon: Shield },
 ]
 
 function SidebarNavContent({

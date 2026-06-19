@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { ensureDefaultUser, requireAuth, AuthError } from '@/lib/ensure-user'
+import { getOptionalUser, requireAuth, AuthError } from '@/lib/ensure-user'
 import { logActivity } from '@/lib/ensure-user'
+import { hashPassword, verifyPassword } from '@/lib/password'
 
 /* ─── GET /api/settings — load profile ─── */
 export async function GET() {
   try {
-    const user = await ensureDefaultUser()
+    const user = await getOptionalUser()
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Authentication required' },
+        { status: 401 }
+      )
+    }
 
     return NextResponse.json({
       success: true,
@@ -23,6 +30,12 @@ export async function GET() {
       },
     })
   } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: error.statusCode }
+      )
+    }
     console.error('Settings fetch error:', error)
     return NextResponse.json(
       { success: false, error: 'Impossible de charger le profil' },
@@ -39,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'update-profile': {
-        const user = await ensureDefaultUser()
+        const user = await requireAuth()
         const { name, avatar } = body
 
         if (!name || typeof name !== 'string' || name.trim().length === 0) {
@@ -53,7 +66,7 @@ export async function POST(request: NextRequest) {
           where: { id: user.id },
           data: {
             name: name.trim().slice(0, 50),
-            ...(avatar !== undefined ? { avatar: String(avatar).slice(0, 2) } : {}),
+            ...(avatar !== undefined ? { avatar: String(avatar).slice(0, 2048) } : {}),
           },
           select: { name: true, avatar: true },
         })
@@ -81,7 +94,7 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        // Verify current password
+        // Verify current password using bcrypt
         if (!user.password) {
           return NextResponse.json(
             { success: false, error: 'Aucun mot de passe défini pour ce compte' },
@@ -89,20 +102,15 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const crypto = await import('crypto')
-        const hashedCurrent = crypto
-          .createHash('sha256')
-          .update(currentPassword)
-          .digest('hex')
-
-        if (hashedCurrent !== user.password) {
+        const isValidCurrent = await verifyPassword(currentPassword, user.password)
+        if (!isValidCurrent) {
           return NextResponse.json(
             { success: false, error: 'Mot de passe actuel incorrect' },
             { status: 401 }
           )
         }
 
-        const hashedNew = crypto.createHash('sha256').update(newPassword).digest('hex')
+        const hashedNew = await hashPassword(newPassword)
         await db.user.update({
           where: { id: user.id },
           data: { password: hashedNew },
@@ -114,7 +122,7 @@ export async function POST(request: NextRequest) {
       }
 
       case 'update-language': {
-        const user = await ensureDefaultUser()
+        const user = await requireAuth()
         const { language } = body
 
         const validLanguages = ['fr', 'en', 'es', 'de', 'ar', 'zh']

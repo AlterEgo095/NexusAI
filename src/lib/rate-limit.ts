@@ -16,6 +16,8 @@ const store = new Map<string, Map<string, RateLimitEntry>>()
 
 // Config: route pattern → { maxRequests, windowMs }
 const ROUTE_LIMITS: Record<string, { maxRequests: number; windowMs: number }> = {
+  '/api/auth/register': { maxRequests: 5, windowMs: 60_000 },
+  '/api/auth': { maxRequests: 10, windowMs: 60_000 },
   '/api/chat': { maxRequests: 30, windowMs: 60_000 },
   '/api/search': { maxRequests: 20, windowMs: 60_000 },
   '/api/image': { maxRequests: 15, windowMs: 60_000 },

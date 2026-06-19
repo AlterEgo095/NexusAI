@@ -16,9 +16,11 @@ model User {
   role          String           @default("user") /// user | admin | superadmin
   credits       Int              @default(10000)
   language      String           @default("fr") /// fr | en | es | de | ar | zh
-  isOnline      Boolean          @default(false)
-  lastSeen      DateTime?
-  createdAt     DateTime         @default(now())
+  isOnline              Boolean          @default(false)
+  lastSeen              DateTime?
+  failedLoginAttempts   Int              @default(0)
+  lockedUntil           DateTime?
+  createdAt             DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   conversations Conversation[]
   agents        CustomAgent[]
@@ -37,6 +39,22 @@ model User {
   browserSessions BrowserSession[]
   mcpConnections McpConnection[]
   connectors     Connector[]
+  webAuthnCredentials WebAuthnCredential[]
+}
+
+model WebAuthnCredential {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  credentialID String   @unique
+  publicKey    String
+  counter      Int      @default(0)
+  deviceName   String?
+  transports   String?
+  createdAt    DateTime @default(now())
+  lastUsed     DateTime?
+
+  @@index([userId])
 }
 
 model MarketplaceAgent {
@@ -386,6 +404,21 @@ model McpConnection {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SecurityAuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String   /// login_success | login_failed | account_locked | webauthn_register | webauthn_auth | password_change | admin_action | suspicious_activity
+  ip        String?
+  userAgent String?
+  details   String?
+  severity  String   @default("info") /// info | warning | critical
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
 }
 
 model SystemSetting {

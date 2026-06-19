@@ -34,8 +34,6 @@ const MarketplaceModule = lazy(() => import('@/components/modules/marketplace-mo
 const ComposerModule = lazy(() => import('@/components/modules/composer-module'))
 const ConnectorsModule = lazy(() => import('@/components/modules/connectors-module'))
 const SettingsModule = lazy(() => import('@/components/modules/settings-module'))
-const AdminModule = lazy(() => import('@/components/modules/admin-module'))
-
 const moduleComponents: Record<string, React.ComponentType> = {
   home: HomeModule,
   chat: ChatModule,
@@ -58,7 +56,6 @@ const moduleComponents: Record<string, React.ComponentType> = {
   composer: ComposerModule,
   connectors: ConnectorsModule,
   settings: SettingsModule,
-  admin: AdminModule,
 }
 
 function ModuleLoader() {
