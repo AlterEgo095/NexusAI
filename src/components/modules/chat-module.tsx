@@ -29,6 +29,9 @@ import {
   ImageIcon as ImageIconLucide,
   X,
   Loader2,
+  Paperclip,
+  Zap,
+  Users,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -37,6 +40,7 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from '@/components/ui/resizable'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useWorkspaceStore, type Message, type Conversation, fetchConversationsFromDB } from '@/store/workspace-store'
 
 /* ─── Suggestion data ─── */
@@ -410,6 +414,12 @@ export default function ChatModule() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const dbLoadedRef = useRef(false)
+  const [chatMode, setChatMode] = useState<'chat' | 'agent' | 'orchestrator' | 'skill'>('chat')
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [fileAttachments, setFileAttachments] = useState<Array<{name: string; type: string; content: string}>>([])
+  const [agentSteps, setAgentSteps] = useState<Array<{thought: string; tool: string | null; result: string}>>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Store selectors
   const conversations = useWorkspaceStore((s) => s.conversations)
@@ -441,7 +451,7 @@ export default function ChatModule() {
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isGenerating])
+  }, [messages, isGenerating, isStreaming])
 
   // ─── Mic recording (ASR) ───
   const toggleRecording = useCallback(async () => {
@@ -551,11 +561,54 @@ export default function ChatModule() {
     }
   }, [attachedImage, input])
 
+  const updateLastMessage = useCallback((content: string) => {
+    if (!activeConversationId) return
+    useWorkspaceStore.setState((s) => ({
+      conversations: s.conversations.map(c =>
+        c.id === activeConversationId
+          ? {
+              ...c,
+              messages: c.messages.map((m, i) =>
+                i === c.messages.length - 1 && m.role === 'assistant'
+                  ? { ...m, content }
+                  : m
+              ),
+            }
+          : c
+      ),
+    }))
+  }, [activeConversationId])
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    Array.from(files).forEach(file => {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`${file.name} dépasse 10 MB`)
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => {
+        const base64 = (reader.result as string).split(',')[1] || ''
+        setFileAttachments(prev => [...prev, {
+          name: file.name,
+          type: file.type,
+          content: base64,
+        }])
+      }
+      reader.readAsDataURL(file)
+    })
+
+    // Reset input
+    e.target.value = ''
+  }, [])
+
   // ─── Send message logic ───
   const sendMessage = useCallback(
     async (content: string) => {
       const trimmed = content.trim()
-      if (!trimmed || isGenerating) return
+      if (!trimmed || isGenerating || isStreaming) return
 
       const store = useWorkspaceStore.getState()
       let convId = store.activeConversationId
@@ -582,52 +635,111 @@ export default function ChatModule() {
       }
 
       setInput('')
+      setFileAttachments([])
+      setAgentSteps([])
       store.setIsGenerating(true)
+      setIsStreaming(true)
+
+      // Add placeholder assistant message for streaming
+      store.addMessage(convId, {
+        id: `msg-${Date.now()}-ai`,
+        role: 'assistant',
+        content: '',
+        createdAt: new Date(),
+      })
 
       try {
         const currentConv = store.conversations.find((c) => c.id === convId)
-        const messageHistory = (currentConv?.messages || []).map((m) => ({
+        const messagesToSend = (currentConv?.messages || []).map((m) => ({
           role: m.role,
           content: m.content,
         }))
 
-        const res = await fetch('/api/chat', {
+        const response = await fetch('/api/chat/stream', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: messageHistory, conversationId: convId }),
+          body: JSON.stringify({
+            messages: messagesToSend,
+            mode: chatMode,
+            skillId: selectedSkillId,
+            conversationId: convId,
+            fileAttachments: fileAttachments.length > 0 ? fileAttachments : undefined,
+          }),
         })
-        const data = await res.json()
 
-        if (data.success) {
-          store.addMessage(convId, {
-            id: `msg-${Date.now()}-ai`,
-            role: 'assistant',
-            content: data.content,
-            createdAt: new Date(),
-          })
-        } else {
-          toast.error(data.error || 'Erreur lors de l\'envoi du message')
-          store.addMessage(convId, {
-            id: `msg-${Date.now()}-err`,
-            role: 'assistant',
-            content: 'Désolé, une erreur est survenue. Veuillez réessayer.',
-            createdAt: new Date(),
-          })
+        if (!response.ok) {
+          throw new Error(`Erreur ${response.status}`)
         }
-      } catch {
-        toast.error('Impossible de se connecter au serveur')
-        store.addMessage(convId, {
-          id: `msg-${Date.now()}-err`,
-          role: 'assistant',
-          content: 'Désolé, une erreur est survenue. Veuillez réessayer.',
-          createdAt: new Date(),
-        })
+
+        const reader = response.body?.getReader()
+        if (!reader) throw new Error('Pas de réponse stream')
+
+        const decoder = new TextDecoder()
+        let fullContent = ''
+        let buffer = ''
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
+
+          for (const line of lines) {
+            if (!line.trim()) continue
+            if (line.startsWith('event: ')) {
+              const eventType = line.slice(7).trim()
+              continue
+            }
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6)
+              try {
+                const data = JSON.parse(dataStr)
+
+                if (data.content) {
+                  fullContent += data.content
+                  updateLastMessage(fullContent)
+                }
+                if (data.thought !== undefined) {
+                  setAgentSteps(prev => [...prev, { thought: data.thought, tool: data.tool, result: data.result || 'Executing...' }])
+                }
+                if (data.tool_result !== undefined) {
+                  setAgentSteps(prev => {
+                    const updated = [...prev]
+                    if (updated.length > 0) {
+                      updated[updated.length - 1] = { ...updated[updated.length - 1], result: data.tool_result.data || data.tool_result }
+                    }
+                    return updated
+                  })
+                }
+                if (data.conversationId) {
+                  // Update conversation ID if new
+                }
+                if (data.error) {
+                  toast.error(data.error)
+                }
+              } catch {
+                // Skip malformed JSON
+              }
+            }
+          }
+        }
+
+        // If no content was streamed, show error
+        if (!fullContent) {
+          updateLastMessage('Désolé, aucune réponse n\'a été reçue. Veuillez réessayer.')
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Impossible de se connecter au serveur')
+        updateLastMessage('Désolé, une erreur est survenue. Veuillez réessayer.')
       } finally {
         store.setIsGenerating(false)
+        setIsStreaming(false)
         textareaRef.current?.focus()
       }
     },
-    [isGenerating]
+    [isGenerating, isStreaming, chatMode, selectedSkillId, fileAttachments, updateLastMessage]
   )
 
   // ─── Keyboard handler ───
@@ -820,6 +932,31 @@ export default function ChatModule() {
               <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
             ) : (
               <>
+                {/* ─── Mode Selector ─── */}
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-border/50 bg-muted/30">
+                  <div className="flex items-center gap-1">
+                    {[
+                      { mode: 'chat' as const, label: 'Chat', icon: MessageSquare },
+                      { mode: 'agent' as const, label: 'Agent', icon: Bot },
+                      { mode: 'orchestrator' as const, label: 'Orchestrateur', icon: Users },
+                      { mode: 'skill' as const, label: 'Skill', icon: Sparkles },
+                    ].map(({ mode, label, icon: Icon }) => (
+                      <button
+                        key={mode}
+                        onClick={() => setChatMode(mode)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          chatMode === mode
+                            ? 'bg-primary text-primary-foreground'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* ─── Messages Area ─── */}
                 <div className="flex-1 overflow-y-auto custom-scrollbar px-4 md:px-8 py-6 space-y-6">
                   <AnimatePresence mode="popLayout">
@@ -827,6 +964,30 @@ export default function ChatModule() {
                       <MessageBubble key={msg.id} message={msg} />
                     ))}
                   </AnimatePresence>
+
+                  {/* Agent Steps */}
+                  {chatMode === 'agent' && agentSteps.length > 0 && (
+                    <div className="px-4 pb-2 space-y-2">
+                      {agentSteps.map((step, i) => (
+                        <div key={i} className="flex items-start gap-2 text-xs animate-in fade-in slide-in-from-bottom-1">
+                          <Zap className="h-3.5 w-3.5 mt-0.5 text-amber-500 shrink-0" />
+                          <div className="min-w-0">
+                            {step.thought && (
+                              <p className="text-muted-foreground italic">{step.thought}</p>
+                            )}
+                            {step.tool && (
+                              <p className="font-medium text-foreground">
+                                Outil: <span className="text-primary">{step.tool}</span>
+                              </p>
+                            )}
+                            {step.result && step.result !== 'Executing...' && (
+                              <p className="text-muted-foreground mt-0.5 line-clamp-2">{step.result.substring(0, 200)}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Typing indicator */}
                   <AnimatePresence>
@@ -839,6 +1000,22 @@ export default function ChatModule() {
                 {/* ─── Input Area ─── */}
                 <div className="p-4 md:px-8 md:pb-6">
                   <div className="glass-subtle rounded-2xl p-2 transition-all focus-within:ring-2 focus-within:ring-primary/30 focus-within:glow-sm max-w-3xl mx-auto">
+                    {fileAttachments.length > 0 && (
+                      <div className="flex flex-wrap gap-2 px-4 pb-2">
+                        {fileAttachments.map((file, i) => (
+                          <div key={i} className="flex items-center gap-1.5 px-2.5 py-1 bg-muted rounded-md text-xs">
+                            <Paperclip className="h-3 w-3" />
+                            <span className="max-w-[150px] truncate">{file.name}</span>
+                            <button
+                              onClick={() => setFileAttachments(prev => prev.filter((_, j) => j !== i))}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <textarea
                       ref={textareaRef}
                       value={input}
@@ -846,7 +1023,7 @@ export default function ChatModule() {
                       onKeyDown={handleKeyDown}
                       placeholder="Envoyez un message..."
                       rows={1}
-                      disabled={isGenerating}
+                      disabled={isGenerating || isStreaming}
                       className="w-full bg-transparent resize-none text-sm md:text-base placeholder:text-muted-foreground/50 outline-none px-3 py-2.5 max-h-40 min-h-[40px] custom-scrollbar"
                       style={{
                         height: 'auto',
@@ -888,6 +1065,22 @@ export default function ChatModule() {
                         >
                           {isRecording ? <MicOff className="w-4 h-4 animate-pulse" /> : <Mic className="w-4 h-4" />}
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                          title="Joindre un fichier"
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          className="hidden"
+                          onChange={handleFileSelect}
+                          multiple
+                          accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.json,.png,.jpg,.jpeg,.gif,.webp,.mp3,.wav,.mp4,.ts,.tsx,.js,.jsx,.py,.java,.go,.rs"
+                        />
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] text-muted-foreground/40 hidden sm:inline">
@@ -903,8 +1096,8 @@ export default function ChatModule() {
                             {isAnalyzingImage ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIconLucide className="w-4 h-4" />}
                             Analyser
                           </Button>
-                        ) : isGenerating ? (
-                          <Button size="icon" variant="destructive" className="rounded-xl h-9 w-9" onClick={() => setIsGenerating(false)} aria-label="Arrêter">
+                        ) : (isGenerating || isStreaming) ? (
+                          <Button size="icon" variant="destructive" className="rounded-xl h-9 w-9" onClick={() => { setIsGenerating(false); setIsStreaming(false) }} aria-label="Arrêter">
                             <Square className="w-4 h-4" fill="currentColor" />
                           </Button>
                         ) : (

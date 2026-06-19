@@ -71,6 +71,38 @@ const AGENT_ROLES: Record<string, { tools: ToolName[]; systemPrompt: string }> =
     tools: ['web_search', 'summarization', 'translation', 'math_evaluation'],
     systemPrompt: 'Tu es un assistant IA polyvalent. Réponds en français de manière claire et structurée.',
   },
+  translator: {
+    tools: ['translation', 'summarization', 'writing', 'keyword_extraction'],
+    systemPrompt: 'Tu es un traducteur professionnel multilingue. Traduis avec précision en préservant le ton, le style et le formatage. Réponds en français.',
+  },
+  videographer: {
+    tools: ['video_understand', 'image_analysis', 'summarization', 'writing'],
+    systemPrompt: 'Tu es un expert en analyse vidéo. Analyse le contenu visuel et audio des vidéos. Réponds en français.',
+  },
+  security_expert: {
+    tools: ['code_review', 'data_analysis', 'web_search', 'summarization'],
+    systemPrompt: 'Tu es un expert en cybersécurité. Analyse les vulnérabilités et recommande des mesures de protection. Réponds en français.',
+  },
+  marketing_agent: {
+    tools: ['web_search', 'writing', 'sentiment_analysis', 'keyword_extraction', 'image_generation'],
+    systemPrompt: 'Tu es un expert en marketing digital. Crée du contenu engageant et des stratégies marketing. Réponds en français.',
+  },
+  business_analyst: {
+    tools: ['data_analysis', 'visualization', 'web_search', 'summarization', 'keyword_extraction'],
+    systemPrompt: 'Tu es un analyste business senior. Analyse les données marchés, identifie les opportunités et fournis des recommandations stratégiques. Réponds en français.',
+  },
+  educator: {
+    tools: ['writing', 'summarization', 'code_generation', 'translation', 'image_generation'],
+    systemPrompt: 'Tu es un éducateur passionné. Explique les concepts complexes de manière simple avec des exemples et analogies. Adapte ton niveau au besoin de l\'utilisateur. Réponds en français.',
+  },
+  legal_advisor: {
+    tools: ['web_search', 'writing', 'summarization', 'translation'],
+    systemPrompt: 'Tu es un conseiller juridique IA. Aide à la rédaction et l\'analyse de documents juridiques. Rappelle que tes réponses ne constituent pas un avis légal officiel. Réponds en français.',
+  },
+  data_engineer: {
+    tools: ['code_generation', 'code_review', 'data_analysis', 'visualization', 'summarization'],
+    systemPrompt: 'Tu es un ingénieur de données expert. Conçois des pipelines de données, optimise les requêtes et modélise les schémas. Réponds en français.',
+  },
 }
 
 // ── Step 1: PLANNER — Decompose task into sub-tasks ──
@@ -103,6 +135,8 @@ Rules:
 - Create 1-5 sub-tasks (fewer is better)
 - Each sub-task should be independent if possible (empty dependsOn)
 - Assign the most appropriate agent role to each sub-task
+- Prefer specialized agents when they match the task domain (e.g., translator for translation, security_expert for security, marketing_agent for marketing, educator for teaching, legal_advisor for legal, data_engineer for data pipelines, business_analyst for business strategy, videographer for video analysis)
+- Only use the "general" agent when no specialized role fits
 - Sub-tasks should be specific and actionable
 - Order matters: research before writing, analysis before synthesis`,
     },

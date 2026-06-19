@@ -35,6 +35,7 @@ const McpModule = lazy(() => import('@/components/modules/mcp-module'))
 const MarketplaceModule = lazy(() => import('@/components/modules/marketplace-module'))
 const ComposerModule = lazy(() => import('@/components/modules/composer-module'))
 const ConnectorsModule = lazy(() => import('@/components/modules/connectors-module'))
+const SkillsModule = lazy(() => import('@/components/modules/skills-module'))
 const SettingsModule = lazy(() => import('@/components/modules/settings-module'))
 const moduleComponents: Record<string, React.ComponentType> = {
   home: HomeModule,
@@ -57,6 +58,7 @@ const moduleComponents: Record<string, React.ComponentType> = {
   marketplace: MarketplaceModule,
   composer: ComposerModule,
   connectors: ConnectorsModule,
+  skills: SkillsModule,
   settings: SettingsModule,
 }
 

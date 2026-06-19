@@ -76,6 +76,7 @@ const navItems: NavItem[] = [
   { id: 'marketplace', label: 'Marketplace', icon: Store },
   { id: 'composer', label: 'Composer', icon: Network },
   { id: 'connectors', label: 'Connecteurs', icon: Link2 },
+  { id: 'skills', label: 'Skills IA', icon: Sparkles },
   { separator: true },
   { id: 'settings', label: 'Paramètres', icon: Settings },
 ]

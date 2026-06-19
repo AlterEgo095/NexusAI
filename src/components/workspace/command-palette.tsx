@@ -26,6 +26,7 @@ import {
   Store,
   Network,
   Link2,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import { useTheme } from 'next-themes'
@@ -61,6 +62,7 @@ const moduleItems: { id: ModuleId; label: string; icon: LucideIcon }[] = [
   { id: 'marketplace', label: 'Marketplace', icon: Store },
   { id: 'composer', label: 'Composer', icon: Network },
   { id: 'connectors', label: 'Connecteurs', icon: Link2 },
+  { id: 'skills', label: 'Skills IA', icon: Sparkles },
   { id: 'settings', label: 'Paramètres', icon: Settings },
 ]
 
