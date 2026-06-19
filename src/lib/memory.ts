@@ -124,7 +124,7 @@ export async function summarizeToMemory(
   if (conversationMessages.length < 3) return []
 
   try {
-    const provider = getProvider()
+    const provider = await getProvider()
     const lastMessages = conversationMessages.slice(-10)
     const conversationText = lastMessages
       .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 300)}`)

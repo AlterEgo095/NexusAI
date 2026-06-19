@@ -208,8 +208,15 @@ class OpenAIProvider implements AIProvider {
     if (!this._client) {
       try {
         const { default: OpenAI } = await import('openai')
-        this._client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-      } catch {
+        const { getSetting } = await import('@/lib/system-settings')
+        const dbKey = await getSetting('openai_api_key')
+        const apiKey = dbKey || process.env.OPENAI_API_KEY
+        if (!apiKey) {
+          throw new Error('OPENAI_API_KEY is required for OpenAI provider')
+        }
+        this._client = new OpenAI({ apiKey })
+      } catch (e) {
+        if (e instanceof Error && e.message.includes('OPENAI_API_KEY')) throw e
         throw new Error('openai package is required for OpenAI provider. Install it with: bun add openai')
       }
     }
@@ -303,10 +310,13 @@ class OpenAIProvider implements AIProvider {
 
   async webSearch(_query: string, _num?: number): Promise<WebSearchResult[]> {
     // OpenAI doesn't have native web search — use Tavily if available
-    if (process.env.TAVILY_API_KEY) {
+    const { getSetting } = await import('@/lib/system-settings')
+    const tavilyKey = await getSetting('tavily_api_key')
+    const apiKey = tavilyKey || process.env.TAVILY_API_KEY
+    if (apiKey) {
       try {
         const tavily = await import('tavily')
-        const client = new (tavily as any).Tavily({ apiKey: process.env.TAVILY_API_KEY })
+        const client = new (tavily as any).Tavily({ apiKey })
         const results = await client.search(_query, { maxResults: _num || 8 })
         return (results.results || []).map((r: any) => ({
           name: r.title,
@@ -337,8 +347,8 @@ class OllamaProvider implements AIProvider {
   readonly name = 'ollama'
   private baseUrl: string
 
-  constructor() {
-    this.baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
+  constructor(baseUrl?: string) {
+    this.baseUrl = baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434'
   }
 
   async chat(messages: ChatMessage[], options?: ChatOptions): Promise<ChatResponse> {
@@ -454,23 +464,30 @@ class OllamaProvider implements AIProvider {
 
 let _provider: AIProvider | null = null
 
-export function getProvider(): AIProvider {
+export async function getProvider(): Promise<AIProvider> {
   if (_provider) return _provider
 
-  const providerName = (process.env.AI_PROVIDER || 'zai').toLowerCase()
+  const { getSetting } = await import('@/lib/system-settings')
+  const providerSetting = await getSetting('ai_provider')
+  const providerName = (providerSetting || process.env.AI_PROVIDER || 'zai').toLowerCase()
 
   switch (providerName) {
-    case 'openai':
-      if (!process.env.OPENAI_API_KEY) {
-        console.warn('OPENAI_API_KEY not set, falling back to ZAI provider')
+    case 'openai': {
+      // Check if API key is available (in DB or env)
+      const dbKey = await getSetting('openai_api_key')
+      if (!dbKey && !process.env.OPENAI_API_KEY) {
+        console.warn('OPENAI_API_KEY not set in DB or env, falling back to ZAI provider')
         _provider = new ZAIProvider()
       } else {
         _provider = new OpenAIProvider()
       }
       break
-    case 'ollama':
-      _provider = new OllamaProvider()
+    }
+    case 'ollama': {
+      const ollamaUrl = await getSetting('ollama_base_url')
+      _provider = new OllamaProvider(ollamaUrl || undefined)
       break
+    }
     case 'zai':
     default:
       _provider = new ZAIProvider()

@@ -77,3 +77,4 @@ download/public/generated/
 screenshot-*.png
 *.bak
 run-dev.sh
+test-final.png

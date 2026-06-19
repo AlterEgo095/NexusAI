@@ -211,7 +211,7 @@ const SYSTEM_PROMPT = `Tu es l'assistant Terminal IA de NexusAI Workspace. Tu r�
 
 async function handleAI(question: string): Promise<string> {
   try {
-    const provider = getProvider()
+    const provider = await getProvider()
     const response = await provider.chat([
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: question },
@@ -225,7 +225,7 @@ async function handleAI(question: string): Promise<string> {
 
 async function handleAIInterpret(command: string): Promise<string> {
   try {
-    const provider = getProvider()
+    const provider = await getProvider()
     const response = await provider.chat([
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: `L'utilisateur a tapé: "${command}"\nExplique brièvement (3-5 lignes max).` },

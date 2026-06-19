@@ -138,7 +138,7 @@ async function* streamAgentExecution(
   tools: ToolName[],
   conversationHistory: Array<{ role: string; content: string }>,
 ): AsyncGenerator<{ event: string; data: Record<string, unknown> }> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const toolResults: ToolResult[] = []
   const steps: Array<{ thought: string; tool: string | null; result: string }> = []
 

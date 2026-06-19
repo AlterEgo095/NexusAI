@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await ensureDefaultUser()
-    const provider = getProvider()
+    const provider = await getProvider()
 
     const response = await provider.imageGeneration({ prompt, size })
 

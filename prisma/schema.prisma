@@ -387,3 +387,15 @@ model McpConnection {
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+model SystemSetting {
+  id          String   @id @default(cuid())
+  key         String   @unique           /// setting key e.g. "ai_provider", "openai_api_key"
+  value       String   @default("")
+  category    String   @default("general") /// api_key | ai_provider | platform | feature | connector
+  isSecret    Boolean  @default(false)   /// mask value in admin UI
+  label       String?                     /// human-readable label for admin UI
+  description String?                     /// help text for admin UI
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

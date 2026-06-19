@@ -262,7 +262,7 @@ async function executeFilesystemTool(toolName: string, params: Record<string, un
 }
 
 async function executeWebSearchTool(toolName: string, params: Record<string, unknown>) {
-  const provider = getProvider()
+  const provider = await getProvider()
 
   switch (toolName) {
     case 'web_search': {
@@ -324,7 +324,7 @@ async function executeWebSearchTool(toolName: string, params: Record<string, unk
 }
 
 async function executeCodeAnalysisTool(toolName: string, params: Record<string, unknown>) {
-  const provider = getProvider()
+  const provider = await getProvider()
 
   switch (toolName) {
     case 'analyze_code': {
@@ -451,7 +451,7 @@ async function executeSystemInfoTool(toolName: string) {
 
     case 'list_models': {
       try {
-        const provider = getProvider()
+        const provider = await getProvider()
         const providerName = provider.name.toUpperCase()
 
         // Dynamically probe which capabilities the provider actually supports
@@ -597,7 +597,7 @@ export async function GET() {
       toolCount: val.tools.length,
     }))
 
-    return NextResponse.json({ connections: formatted, availableServers })
+    return NextResponse.json({ success: true, connections: formatted, availableServers })
   } catch (err: unknown) {
     console.error('[MCP GET]', err)
     return NextResponse.json({ error: 'Erreur serveur' }, { status: 500 })

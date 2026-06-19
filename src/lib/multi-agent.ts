@@ -76,7 +76,7 @@ const AGENT_ROLES: Record<string, { tools: ToolName[]; systemPrompt: string }> =
 // ── Step 1: PLANNER — Decompose task into sub-tasks ──
 
 async function planTask(task: string): Promise<OrchestrationPlan> {
-  const provider = getProvider()
+  const provider = await getProvider()
 
   const rolesList = Object.keys(AGENT_ROLES).join(', ')
 
@@ -182,7 +182,7 @@ async function executeSubTask(subTask: SubTask, originalTask: string): Promise<{
   }
 
   // No tools — direct LLM response
-  const provider = (await import('./ai-provider')).getProvider()
+  const provider = await (await import('./ai-provider')).getProvider()
   const response = await provider.chat(messages)
   return { result: response.content, durationMs: Date.now() - start, agentUsed: subTask.assignedAgent || 'general' }
 }
@@ -251,7 +251,7 @@ async function synthesizeResults(
     agentUsed: string
   }>
 ): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
 
   const resultsText = results
     .map((r, i) => `### ${i + 1}. ${r.title} (Agent: ${r.agentUsed})\n${r.result}`)

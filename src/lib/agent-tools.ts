@@ -66,7 +66,7 @@ export const TOOL_CATEGORIES: Record<ToolCategory, ToolCategoryInfo> = {
 
 // ── 1. Web Search ──
 async function toolWebSearch(query: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const results = await provider.webSearch(query, 8)
   if (results.length === 0) {
     return `Aucun résultat trouvé pour "${query}".`
@@ -78,7 +78,7 @@ async function toolWebSearch(query: string): Promise<string> {
 
 // ── 2. Web Reader ──
 async function toolWebReader(urlOrQuery: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const urlPattern = /^https?:\/\//
   let url = urlOrQuery.trim()
 
@@ -106,7 +106,7 @@ async function toolWebReader(urlOrQuery: string): Promise<string> {
 
 // ── 3. Code Generation ──
 async function toolCodeGeneration(spec: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are an expert programmer. Generate clean, well-commented, production-ready code based on the specifications. Always include imports and make the code complete and runnable.' },
     { role: 'user', content: spec },
@@ -116,7 +116,7 @@ async function toolCodeGeneration(spec: string): Promise<string> {
 
 // ── 4. Code Review ──
 async function toolCodeReview(code: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are a senior code reviewer. Analyze the code for bugs, performance issues, security vulnerabilities, and best practices. Provide specific, actionable feedback with line references. Rate severity: 🔴 Critical, 🟡 Warning, 🟢 Suggestion.' },
     { role: 'user', content: `Review this code:\n\n${code}` },
@@ -126,7 +126,7 @@ async function toolCodeReview(code: string): Promise<string> {
 
 // ── 5. Writing ──
 async function toolWriting(task: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are a professional content writer. Create well-structured, engaging content that is clear, concise, and tailored to the audience. Use markdown formatting with proper headings, lists, and emphasis.' },
     { role: 'user', content: task },
@@ -136,7 +136,7 @@ async function toolWriting(task: string): Promise<string> {
 
 // ── 6. Editing ──
 async function toolEditing(text: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are a professional editor. Improve the given text for clarity, grammar, style, and impact. Return only the improved version with a brief summary of changes made. Respond in the same language as the input.' },
     { role: 'user', content: `Edit and improve this text:\n\n${text}` },
@@ -146,7 +146,7 @@ async function toolEditing(text: string): Promise<string> {
 
 // ── 7. Summarization ──
 async function toolSummarization(text: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are an expert summarizer. Provide a clear, concise summary. Use bullet points for key takeaways. Keep it under 200 words unless the source is very long. Respond in the same language as the input.' },
     { role: 'user', content: `Résume ce texte:\n\n${text}` },
@@ -156,7 +156,7 @@ async function toolSummarization(text: string): Promise<string> {
 
 // ── 8. Translation ──
 async function toolTranslation(input: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are a professional translator. Detect the source language and translate to the target language specified by the user. If no target language is specified, translate to French. Preserve formatting (markdown, lists, code blocks). Return ONLY the translated text, no explanations.' },
     { role: 'user', content: input },
@@ -166,7 +166,7 @@ async function toolTranslation(input: string): Promise<string> {
 
 // ── 9. Data Analysis ──
 async function toolDataAnalysis(data: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are a data analyst expert. Analyze the provided data, identify patterns, trends, and outliers. Provide actionable insights with specific numbers. Structure your response with clear sections: Overview, Key Findings, Trends, Recommendations.' },
     { role: 'user', content: data },
@@ -176,7 +176,7 @@ async function toolDataAnalysis(data: string): Promise<string> {
 
 // ── 10. Visualization ──
 async function toolVisualization(data: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: 'You are a data visualization expert. Based on the data provided, recommend specific chart types (bar, line, pie, scatter, heatmap, etc.) with color schemes, and describe what each visualization would show. Be specific about axes, labels, and insights. Format as a structured recommendation.' },
     { role: 'user', content: data },
@@ -186,7 +186,7 @@ async function toolVisualization(data: string): Promise<string> {
 
 // ── 11. Sentiment Analysis ──
 async function toolSentimentAnalysis(text: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: `You are a sentiment analysis expert. Analyze the sentiment and emotions of the text. Provide your analysis in this exact JSON format (no markdown, no code fences):
 {"sentiment": "positive|negative|neutral|mixed", "confidence": 0.0-1.0, "emotions": [{"name": "emotion", "score": 0.0-1.0}], "summary": "Brief explanation in French", "key_phrases": ["phrase1", "phrase2"]}` },
@@ -197,7 +197,7 @@ async function toolSentimentAnalysis(text: string): Promise<string> {
 
 // ── 12. Keyword Extraction ──
 async function toolKeywordExtraction(text: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: `You are an NLP expert. Extract the most important keywords, topics, and entities from the text. Return in this exact JSON format (no markdown, no code fences):
 {"keywords": [{"term": "keyword", "relevance": 0.0-1.0, "category": "person|org|location|concept|technology|event|other"}], "topics": ["topic1", "topic2"], "entities": [{"name": "entity", "type": "type"}, ...], "language": "detected_language"}` },
@@ -208,14 +208,14 @@ async function toolKeywordExtraction(text: string): Promise<string> {
 
 // ── 13. Image Generation ──
 async function toolImageGeneration(prompt: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const result = await provider.imageGeneration({ prompt, size: '1024x1024' })
   return `Image générée avec succès (base64 length: ${result.base64.length})`
 }
 
 // ── 14. Image Analysis (VLM) ──
 async function toolImageAnalysis(input: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   let imageUrl = input.trim()
   let question = 'Describe this image in detail, including objects, text, colors, layout, and any notable elements.'
 
@@ -243,7 +243,7 @@ async function toolImageAnalysis(input: string): Promise<string> {
 
 // ── 15. Text-to-Speech ──
 async function toolTextToSpeech(text: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const maxChunk = 1000
   const chunks: string[] = []
   if (text.length <= maxChunk) {
@@ -275,7 +275,7 @@ async function toolTextToSpeech(text: string): Promise<string> {
 
 // ── 16. Speech-to-Text ──
 async function toolSpeechToText(input: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   if (!input || input.length < 100) {
     return 'Veuillez fournir de l\'audio en base64 pour la transcription. Utilisez l\'API /api/asr pour uploader un fichier audio.'
   }
@@ -285,7 +285,7 @@ async function toolSpeechToText(input: string): Promise<string> {
 
 // ── 17. Email Composer ──
 async function toolEmailComposer(input: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: `You are a professional email writer. Compose a well-structured, polite, and effective email based on the request. Include:
 - Subject line (Objet:)
@@ -302,7 +302,7 @@ Respond in the same language as the request. Use markdown formatting.` },
 
 // ── 18. Math Evaluation ──
 async function toolMathEvaluation(input: string): Promise<string> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     { role: 'system', content: `You are a mathematical expert. Solve the given problem step by step. Show all work clearly. For numerical answers, provide the exact value and a decimal approximation when applicable. Use LaTeX formatting for mathematical expressions. Structure your response with:
 1. Problem understanding
@@ -417,7 +417,7 @@ export async function executeAgentAutonomously(
   tools: ToolName[],
   conversationHistory: Array<{ role: string; content: string }> = []
 ): Promise<ReActResult> {
-  const provider = getProvider()
+  const provider = await getProvider()
   const toolResults: ToolResult[] = []
   const steps: Array<{ thought: string; tool: string | null; result: string }> = []
 

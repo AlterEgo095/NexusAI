@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await ensureDefaultUser()
-    const provider = getProvider()
+    const provider = await getProvider()
 
     /* ── BROWSE: Fetch page content ── */
     if (action === 'browse') {

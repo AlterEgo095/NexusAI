@@ -14,18 +14,32 @@ export async function POST(request: NextRequest) {
 
     const user = await ensureDefaultUser();
 
+    // Ensure conversation exists and belongs to user
+    let activeConversationId = conversationId;
+    if (activeConversationId) {
+      const existing = await db.conversation.findFirst({
+        where: { id: activeConversationId, userId: user.id },
+      });
+      if (!existing) {
+        const conv = await db.conversation.create({
+          data: { userId: user.id, title: messages[0].content.slice(0, 60) + (messages[0].content.length > 60 ? "..." : "") },
+        });
+        activeConversationId = conv.id;
+      }
+    }
+
     // Save user message to DB
-    if (conversationId) {
+    if (activeConversationId) {
       await db.message.create({
         data: {
-          conversationId,
+          conversationId: activeConversationId,
           role: "user",
           content: messages[messages.length - 1].content,
         },
       });
     }
 
-    const provider = getProvider();
+    const provider = await getProvider();
     const sdkMessages = [];
     if (systemPrompt) {
       sdkMessages.push({ role: "system" as const, content: systemPrompt });
@@ -49,20 +63,20 @@ export async function POST(request: NextRequest) {
             }
 
             // Save assistant message to DB
-            if (conversationId && fullContent) {
+            if (activeConversationId && fullContent) {
               await db.message.create({
-                data: { conversationId, role: "assistant", content: fullContent },
+                data: { conversationId: activeConversationId, role: "assistant", content: fullContent },
               });
             }
 
-            await logActivity("chat", "Message streamé", conversationId ? `Conversation: ${conversationId}` : undefined);
+            await logActivity("chat", "Message streamé", activeConversationId ? `Conversation: ${activeConversationId}` : undefined);
             await incrementUsage("chatRequests");
             await incrementUsage("tokensUsed", fullContent.length);
 
             // Update conversation title if first message
-            if (conversationId && messages.length === 1) {
+            if (activeConversationId && messages.length === 1) {
               await db.conversation.update({
-                where: { id: conversationId },
+                where: { id: activeConversationId },
                 data: { title: messages[0].content.slice(0, 60) + (messages[0].content.length > 60 ? "..." : "") },
               });
             }
@@ -90,19 +104,19 @@ export async function POST(request: NextRequest) {
     const response = await provider.chat(sdkMessages);
     const content = response.content;
 
-    if (conversationId && content) {
+    if (activeConversationId && content) {
       await db.message.create({
-        data: { conversationId, role: "assistant", content },
+        data: { conversationId: activeConversationId, role: "assistant", content },
       });
     }
 
-    await logActivity("chat", "Message envoyé", conversationId ? `Conversation: ${conversationId}` : undefined);
+    await logActivity("chat", "Message envoyé", activeConversationId ? `Conversation: ${activeConversationId}` : undefined);
     await incrementUsage("chatRequests");
     await incrementUsage("tokensUsed", content.length);
 
-    if (conversationId && messages.length === 1) {
+    if (activeConversationId && messages.length === 1) {
       await db.conversation.update({
-        where: { id: conversationId },
+        where: { id: activeConversationId },
         data: { title: messages[0].content.slice(0, 60) + (messages[0].content.length > 60 ? "..." : "") },
       });
     }

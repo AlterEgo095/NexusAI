@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAdmin, AuthError } from "@/lib/ensure-user";
 import { Prisma } from "@prisma/client";
+import {
+  getAllSettings,
+  getSettingsByCategory,
+  updateSetting,
+  bulkUpdateSettings,
+  createSetting,
+  deleteSetting,
+} from "@/lib/system-settings";
 
 /* ═══════════════════════════════════════════════════════════════════════
    GET — Admin Dashboard Data
@@ -344,6 +352,266 @@ export async function POST(request: NextRequest) {
         });
 
         return NextResponse.json({ success: true, user: updated });
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         Settings Actions
+         ═══════════════════════════════════════════════════════════════ */
+
+      /* ─── Get all settings ─── */
+      case "get-settings": {
+        const settings = await getAllSettings();
+        return NextResponse.json({ success: true, settings });
+      }
+
+      /* ─── Get settings by category ─── */
+      case "get-settings-category": {
+        const { category } = body as { category: string };
+        if (!category) {
+          return NextResponse.json(
+            { success: false, error: "category is required" },
+            { status: 400 }
+          );
+        }
+        const settings = await getSettingsByCategory(category);
+        return NextResponse.json({ success: true, settings });
+      }
+
+      /* ─── Update a single setting ─── */
+      case "update-setting": {
+        const { key, value } = body as { key: string; value: string };
+        if (!key || value === undefined) {
+          return NextResponse.json(
+            { success: false, error: "key and value are required" },
+            { status: 400 }
+          );
+        }
+        const setting = await updateSetting(key, String(value));
+        return NextResponse.json({ success: true, setting });
+      }
+
+      /* ─── Bulk update settings ─── */
+      case "bulk-update-settings": {
+        const { updates } = body as { updates: Array<{ key: string; value: string }> };
+        if (!updates || !Array.isArray(updates)) {
+          return NextResponse.json(
+            { success: false, error: "updates array is required" },
+            { status: 400 }
+          );
+        }
+        const settings = await bulkUpdateSettings(
+          updates.map((u) => ({ key: u.key, value: String(u.value) }))
+        );
+        return NextResponse.json({ success: true, settings });
+      }
+
+      /* ─── Create a custom setting ─── */
+      case "create-setting": {
+        const { key, value, category, isSecret, label, description } = body as {
+          key: string;
+          value: string;
+          category: string;
+          isSecret: boolean;
+          label: string;
+          description?: string;
+        };
+        if (!key || !category || !label) {
+          return NextResponse.json(
+            { success: false, error: "key, category, and label are required" },
+            { status: 400 }
+          );
+        }
+        const setting = await createSetting({
+          key,
+          value: value || '',
+          category,
+          isSecret: isSecret || false,
+          label,
+          description,
+        });
+        return NextResponse.json({ success: true, setting });
+      }
+
+      /* ─── Delete a custom setting ─── */
+      case "delete-setting": {
+        const { key } = body as { key: string };
+        if (!key) {
+          return NextResponse.json(
+            { success: false, error: "key is required" },
+            { status: 400 }
+          );
+        }
+        await deleteSetting(key);
+        return NextResponse.json({ success: true, deleted: key });
+      }
+
+      /* ═══════════════════════════════════════════════════════════════
+         Marketplace Agent Actions
+         ═══════════════════════════════════════════════════════════════ */
+
+      /* ─── List marketplace agents ─── */
+      case "list-marketplace-agents": {
+        const { category, search } = body as {
+          category?: string;
+          search?: string;
+        };
+
+        const where: Prisma.MarketplaceAgentWhereInput = {};
+        if (category) where.category = category;
+        if (search) {
+          where.OR = [
+            { name: { contains: search } },
+            { description: { contains: search } },
+            { agentId: { contains: search } },
+          ];
+        }
+
+        const agents = await db.marketplaceAgent.findMany({
+          where,
+          orderBy: [{ isBuiltIn: 'desc' }, { createdAt: 'desc' }],
+        });
+        return NextResponse.json({ success: true, agents });
+      }
+
+      /* ─── Create a marketplace agent ─── */
+      case "create-marketplace-agent": {
+        const {
+          agentId,
+          name,
+          description,
+          longDescription,
+          category,
+          icon,
+          color,
+          systemPrompt,
+          tools,
+          capabilities,
+          tags,
+        } = body as {
+          agentId: string;
+          name: string;
+          description: string;
+          longDescription?: string;
+          category: string;
+          icon?: string;
+          color?: string;
+          systemPrompt: string;
+          tools?: string;
+          capabilities?: string;
+          tags?: string;
+        };
+
+        if (!agentId || !name || !description || !category || !systemPrompt) {
+          return NextResponse.json(
+            { success: false, error: "agentId, name, description, category, and systemPrompt are required" },
+            { status: 400 }
+          );
+        }
+
+        const agent = await db.marketplaceAgent.create({
+          data: {
+            agentId,
+            name,
+            description,
+            longDescription,
+            category,
+            icon: icon || '🤖',
+            color: color || '#6366f1',
+            systemPrompt,
+            tools: tools || '[]',
+            capabilities: capabilities || '[]',
+            author: 'Admin',
+            isBuiltIn: false,
+            isPublished: true,
+            tags: tags || '[]',
+          },
+        });
+        return NextResponse.json({ success: true, agent });
+      }
+
+      /* ─── Update a marketplace agent ─── */
+      case "update-marketplace-agent": {
+        const { id, ...updates } = body as {
+          id: string;
+          [key: string]: any;
+        };
+
+        if (!id) {
+          return NextResponse.json(
+            { success: false, error: "id is required" },
+            { status: 400 }
+          );
+        }
+
+        // Build update data — only allow specific fields
+        const allowedFields: (keyof Prisma.MarketplaceAgentUpdateInput)[] = [
+          'name', 'description', 'longDescription', 'category',
+          'icon', 'color', 'systemPrompt', 'tools', 'capabilities',
+          'tags', 'isPublished',
+        ];
+        const updateData: Prisma.MarketplaceAgentUpdateInput = {};
+        for (const field of allowedFields) {
+          if (updates[field] !== undefined) {
+            updateData[field] = updates[field];
+          }
+        }
+
+        const agent = await db.marketplaceAgent.update({
+          where: { id },
+          data: updateData,
+        });
+        return NextResponse.json({ success: true, agent });
+      }
+
+      /* ─── Delete a marketplace agent ─── */
+      case "delete-marketplace-agent": {
+        const { id, force } = body as { id: string; force?: boolean };
+
+        if (!id) {
+          return NextResponse.json(
+            { success: false, error: "id is required" },
+            { status: 400 }
+          );
+        }
+
+        const existing = await db.marketplaceAgent.findUnique({ where: { id } });
+        if (!existing) {
+          return NextResponse.json(
+            { success: false, error: "Agent not found" },
+            { status: 404 }
+          );
+        }
+
+        if (existing.isBuiltIn && !force) {
+          return NextResponse.json(
+            { success: false, error: "Cannot delete built-in agents. Use force: true to override." },
+            { status: 403 }
+          );
+        }
+
+        await db.marketplaceAgent.delete({ where: { id } });
+        return NextResponse.json({ success: true, deleted: id });
+      }
+
+      /* ─── Toggle marketplace agent publication ─── */
+      case "toggle-marketplace-agent": {
+        const { id, isPublished } = body as {
+          id: string;
+          isPublished: boolean;
+        };
+
+        if (!id || isPublished === undefined) {
+          return NextResponse.json(
+            { success: false, error: "id and isPublished are required" },
+            { status: 400 }
+          );
+        }
+
+        const agent = await db.marketplaceAgent.update({
+          where: { id },
+          data: { isPublished },
+        });
+        return NextResponse.json({ success: true, agent });
       }
 
       default:

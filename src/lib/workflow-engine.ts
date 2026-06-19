@@ -180,7 +180,7 @@ async function executeActionNode(
   }
 
   // Fallback: use LLM for unrecognized tools
-  const provider = getProvider()
+  const provider = await getProvider()
   const fallbackPrompt = String(node.config.query || node.config.input || `Execute: ${node.label}`)
   const { resolved: resolvedPrompt, reads: promptReads } = variables.resolve(fallbackPrompt)
   allReads.push(...promptReads)
@@ -204,7 +204,7 @@ async function executeConditionNode(
   const allReads = [...exprReads]
   if (lastResultValue) allReads.push('last_result')
 
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     {
       role: 'system',
@@ -353,7 +353,7 @@ async function executeTransformNode(
   const allReads = [...instrReads]
   if (lastResultValue) allReads.push('last_result')
 
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     {
       role: 'system',
@@ -505,7 +505,7 @@ async function executeNotificationNode(
   const lastResultValue = variables.get('last_result')
   if (lastResultValue) allReads.push('last_result')
 
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     {
       role: 'system',

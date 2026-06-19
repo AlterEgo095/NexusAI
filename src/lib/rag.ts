@@ -300,7 +300,7 @@ export async function ragQuery(
 
   if (sources.length === 0) {
     // Fall back to direct LLM answer
-    const provider = getProvider()
+    const provider = await getProvider()
     const response = await provider.chat([
       {
         role: 'system',
@@ -317,7 +317,7 @@ export async function ragQuery(
     .join('\n\n---\n\n')
 
   // Generate answer using LLM with context
-  const provider = getProvider()
+  const provider = await getProvider()
   const response = await provider.chat([
     {
       role: 'system',
